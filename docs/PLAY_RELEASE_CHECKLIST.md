@@ -14,6 +14,8 @@
 - [ ] 初回に外部LLMへの送信内容を説明する
 - [ ] オフライン、429、残高不足、無効モデルを分けて表示する
 - [ ] 実機でGemini、OpenAI、Claudeを各1回以上確認する
+- [ ] 各プロバイダーのモバイルアプリでのAPIキー利用条件を確認する
+- [ ] OpenAIのクライアント環境に関する公式注意事項とBYOK方式の整合を確認する
 - [ ] ReleaseビルドでR8を有効にする
 - [ ] リリース署名鍵を作成し、安全な場所へ保管する
 - [ ] Android App Bundleを生成する
@@ -47,7 +49,7 @@
 ## サイト
 
 - [ ] `https://byokey-lab.com/` 親サイト
-- [ ] `https://byokey-lab.com/apps/speak` 製品ページ
+- [ ] `https://byokey-lab.com/speak/english/` 製品ページ
 - [ ] `https://byokey-lab.com/privacy` プライバシーポリシー
 - [ ] `https://byokey-lab.com/terms` 利用規約
 - [ ] `https://byokey-lab.com/support` サポートとFAQ
@@ -62,4 +64,5 @@
 - Android Auto Backup: https://developer.android.com/identity/data/autobackup
 - Gemini API: https://ai.google.dev/api
 - OpenAI Responses API: https://developers.openai.com/api/reference/resources/responses/methods/create
+- OpenAI API key safety: https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety
 - Anthropic Messages API: https://platform.claude.com/docs/en/api/messages

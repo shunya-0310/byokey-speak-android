@@ -28,6 +28,11 @@ BYOKey Speakは、自分のLLM APIキーを使う、買い切り型の語学会�
 モデル名は設定画面で変更できます。APIキーは各プロバイダーからユーザー自身が取得します。
 LLM利用料金はアプリ代金に含まれません。
 
+> [!IMPORTANT]
+> 接続実装と、各プロバイダーがモバイルアプリでのAPIキー利用を認めるかは別問題です。
+> OpenAIはAPIキーをモバイルアプリなどのクライアント環境へ配置しないよう公式に案内しています。
+> OpenAI対応は、利用条件と安全面を再確認するまで公開対象として確定しません。
+
 ## セキュリティとプライバシー
 
 - APIキーの暗号鍵はAndroid Keystoreから取り出せません。
@@ -55,7 +60,7 @@ APKは`app/build/outputs/apk/debug/app-debug.apk`へ生成されます。
 - パッケージ名: `com.byokeylab.speak`
 - 表示名: `BYOKey Speak`
 - Playストア候補名: `BYOKey Speak: English Coach`
-- 公式サイト候補: `https://byokey-lab.com/apps/speak`
+- 公式サイト候補: `https://byokey-lab.com/speak/english/`
 
 公開前の残作業は[Play公開チェックリスト](docs/PLAY_RELEASE_CHECKLIST.md)を参照してください。
 機能範囲と優先順位は[プロダクト仕様](docs/PRODUCT_SPEC.md)にまとめています。
