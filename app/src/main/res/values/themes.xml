@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.EnglishCoach" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">serif</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">#EBDCB6</item>
+        <item name="android:statusBarColor">#EBDCB6</item>
+    </style>
+</resources>
