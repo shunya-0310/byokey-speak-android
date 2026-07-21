@@ -17,10 +17,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -177,7 +177,7 @@ fun MessageBubble(
                     if (message.role == MessageRole.Coach) {
                         IconButton(onClick = onSpeak, modifier = Modifier.size(28.dp)) {
                             Icon(
-                                Icons.Default.VolumeUp,
+                                Icons.AutoMirrored.Filled.VolumeUp,
                                 contentDescription = "Read aloud",
                                 tint = Grimoire.GoldDark,
                                 modifier = Modifier.size(18.dp)
@@ -276,7 +276,7 @@ fun ConversationComposer(
                     onClick = onSend,
                     enabled = input.isNotBlank() && !isSending
                 ) {
-                    Icon(Icons.Default.Send, contentDescription = "Send", tint = Grimoire.Burgundy)
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Grimoire.Burgundy)
                 }
             }
         }
