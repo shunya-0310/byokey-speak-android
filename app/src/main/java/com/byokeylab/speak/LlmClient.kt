@@ -18,12 +18,27 @@ class LlmClient {
         .build()
 
     suspend fun generate(provider: LlmProvider, apiKey: String, model: String, prompt: String): String {
+        if (apiKey.isBlank()) {
+            throw LlmException(LlmErrorKind.MissingApiKey, LlmErrorKind.MissingApiKey.userMessage)
+        }
         return withContext(Dispatchers.IO) {
             when (provider) {
                 LlmProvider.Gemini -> generateWithGemini(apiKey, model, prompt)
                 LlmProvider.OpenAI -> generateWithOpenAi(apiKey, model, prompt)
                 LlmProvider.Anthropic -> generateWithAnthropic(apiKey, model, prompt)
             }
+        }
+    }
+
+    /** FR-002: 接続テスト。成功ならnull、失敗なら分類済み例外を返す。 */
+    suspend fun testConnection(provider: LlmProvider, apiKey: String, model: String): LlmException? {
+        return try {
+            generate(provider, apiKey, model, "Reply with exactly: OK")
+            null
+        } catch (error: LlmException) {
+            error
+        } catch (error: Exception) {
+            LlmException(LlmErrorKind.Unknown, LlmErrorKind.Unknown.userMessage)
         }
     }
 
@@ -55,7 +70,7 @@ class LlmClient {
 
         val response = execute(request, LlmProvider.Gemini)
         return collectTexts(response.optJSONArray("candidates"))
-            .ifBlank { throw IOException("Gemini returned no text.") }
+            .ifBlank { throw LlmException(LlmErrorKind.Provider, "Gemini returned no text.") }
     }
 
     private fun generateWithOpenAi(apiKey: String, model: String, prompt: String): String {
@@ -76,7 +91,7 @@ class LlmClient {
         val response = execute(request, LlmProvider.OpenAI)
         response.optString("output_text").takeIf { it.isNotBlank() }?.let { return it }
         return collectTexts(response.optJSONArray("output"))
-            .ifBlank { throw IOException("OpenAI returned no text.") }
+            .ifBlank { throw LlmException(LlmErrorKind.Provider, "OpenAI returned no text.") }
     }
 
     private fun generateWithAnthropic(apiKey: String, model: String, prompt: String): String {
@@ -100,29 +115,27 @@ class LlmClient {
 
         val response = execute(request, LlmProvider.Anthropic)
         return collectTexts(response.optJSONArray("content"))
-            .ifBlank { throw IOException("Claude returned no text.") }
+            .ifBlank { throw LlmException(LlmErrorKind.Provider, "Claude returned no text.") }
     }
 
     private fun execute(request: Request, provider: LlmProvider): JSONObject {
-        client.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                throw IOException("${provider.label} API error ${response.code}: ${parseError(raw)}")
+        val response = try {
+            client.newCall(request).execute()
+        } catch (error: IOException) {
+            throw LlmException(LlmErrorKind.Network, LlmErrorKind.Network.userMessage)
+        }
+        response.use {
+            val raw = it.body?.string().orEmpty()
+            if (!it.isSuccessful) {
+                val kind = LlmErrorClassifier.classifyHttp(it.code, raw)
+                // NOTE: rawをそのまま出さない(キー混入防止)。分類済みメッセージ+短い要約のみ。
+                throw LlmException(kind, "${provider.label}: ${kind.userMessage}")
             }
             return runCatching { JSONObject(raw) }
-                .getOrElse { throw IOException("${provider.label} returned an invalid response.") }
+                .getOrElse {
+                    throw LlmException(LlmErrorKind.Provider, "${provider.label} returned an invalid response.")
+                }
         }
-    }
-
-    private fun parseError(raw: String): String {
-        return runCatching {
-            val error = JSONObject(raw).opt("error")
-            when (error) {
-                is JSONObject -> error.optString("message").ifBlank { raw }
-                is String -> error.ifBlank { raw }
-                else -> raw
-            }
-        }.getOrDefault(raw.ifBlank { "Unknown error" })
     }
 
     private fun collectTexts(array: JSONArray?): String {
@@ -154,5 +167,31 @@ class LlmClient {
 
     companion object {
         private val JSON = "application/json; charset=utf-8".toMediaType()
+    }
+}
+
+/** HTTPステータスとエラー本文からエラー種別を分類する。純粋関数(テスト対象)。 */
+object LlmErrorClassifier {
+    fun classifyHttp(code: Int, body: String): LlmErrorKind {
+        val lower = body.lowercase()
+        return when {
+            code == 401 || code == 403 -> LlmErrorKind.InvalidApiKey
+            code == 404 -> LlmErrorKind.InvalidModel
+            code == 402 -> LlmErrorKind.Billing
+            code == 429 && (
+                lower.contains("insufficient_quota") ||
+                    lower.contains("billing") ||
+                    lower.contains("credit balance")
+                ) -> LlmErrorKind.Billing
+            code == 429 -> LlmErrorKind.RateLimit
+            code == 400 && (
+                lower.contains("model") &&
+                    (lower.contains("not found") || lower.contains("not_found") || lower.contains("invalid") || lower.contains("does not exist"))
+                ) -> LlmErrorKind.InvalidModel
+            code == 400 && lower.contains("api key") -> LlmErrorKind.InvalidApiKey
+            code == 400 && lower.contains("api_key") -> LlmErrorKind.InvalidApiKey
+            code >= 500 -> LlmErrorKind.Provider
+            else -> LlmErrorKind.Unknown
+        }
     }
 }

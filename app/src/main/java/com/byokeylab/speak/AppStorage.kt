@@ -1,9 +1,13 @@
-﻿package com.byokeylab.speak
+package com.byokeylab.speak
 
 import android.content.Context
 import org.json.JSONArray
-import org.json.JSONObject
 
+/**
+ * 設定・フラグ類のSharedPreferences保存。
+ * 会話・メモ・進捗はRoom(AppDatabase)へ移行済み。
+ * loadLegacy*() は旧バージョンからの一度きりの移行専用。
+ */
 class AppStorage(context: Context) {
     private val prefs = context.getSharedPreferences("byokey_speak", Context.MODE_PRIVATE)
     private val secureApiKeyStore = SecureApiKeyStore(context)
@@ -40,7 +44,27 @@ class AppStorage(context: Context) {
             .apply()
     }
 
-    fun loadMessages(): List<ChatMessage> {
+    fun deleteApiKey() {
+        secureApiKeyStore.clear()
+    }
+
+    // --- Onboarding / ナビゲーション状態 ---
+
+    var onboardingDone: Boolean
+        get() = prefs.getBoolean(KEY_ONBOARDING_DONE, false)
+        set(value) = prefs.edit().putBoolean(KEY_ONBOARDING_DONE, value).apply()
+
+    var lastOpenedQuickChatId: Long
+        get() = prefs.getLong(KEY_LAST_QUICK_CHAT, -1L)
+        set(value) = prefs.edit().putLong(KEY_LAST_QUICK_CHAT, value).apply()
+
+    var legacyImported: Boolean
+        get() = prefs.getBoolean(KEY_LEGACY_IMPORTED, false)
+        set(value) = prefs.edit().putBoolean(KEY_LEGACY_IMPORTED, value).apply()
+
+    // --- 旧バージョンデータ(移行専用) ---
+
+    fun loadLegacyMessages(): List<ChatMessage> {
         val raw = prefs.getString(KEY_MESSAGES, null) ?: return emptyList()
         return runCatching {
             val array = JSONArray(raw)
@@ -50,7 +74,9 @@ class AppStorage(context: Context) {
                     add(
                         ChatMessage(
                             id = item.optLong("id"),
-                            role = MessageRole.valueOf(item.optString("role", MessageRole.System.name)),
+                            role = runCatching {
+                                MessageRole.valueOf(item.optString("role", MessageRole.System.name))
+                            }.getOrDefault(MessageRole.System),
                             text = item.optString("text"),
                             timestampMillis = item.optLong("timestampMillis")
                         )
@@ -60,26 +86,7 @@ class AppStorage(context: Context) {
         }.getOrDefault(emptyList())
     }
 
-    fun saveMessages(messages: List<ChatMessage>) {
-        val array = JSONArray()
-        messages.takeLast(MAX_SAVED_MESSAGES).forEach { message ->
-            array.put(
-                JSONObject()
-                    .put("id", message.id)
-                    .put("role", message.role.name)
-                    .put("text", message.text)
-                    .put("timestampMillis", message.timestampMillis)
-            )
-        }
-        prefs.edit().putString(KEY_MESSAGES, array.toString()).apply()
-    }
-
-    fun clearMessages() {
-        prefs.edit().remove(KEY_MESSAGES).apply()
-    }
-
-
-    fun loadNotes(): List<LearningNote> {
+    fun loadLegacyNotes(): List<LearningNote> {
         val raw = prefs.getString(KEY_NOTES, null) ?: return emptyList()
         return runCatching {
             val array = JSONArray(raw)
@@ -100,59 +107,27 @@ class AppStorage(context: Context) {
         }.getOrDefault(emptyList())
     }
 
-    fun saveNotes(notes: List<LearningNote>) {
-        val array = JSONArray()
-        notes.take(MAX_SAVED_NOTES).forEach { note ->
-            array.put(
-                JSONObject()
-                    .put("id", note.id)
-                    .put("sourceMessage", note.sourceMessage)
-                    .put("coachNotes", note.coachNotes)
-                    .put("betterOptions", note.betterOptions)
-                    .put("timestampMillis", note.timestampMillis)
-            )
-        }
-        prefs.edit().putString(KEY_NOTES, array.toString()).apply()
-    }
-
-    fun clearNotes() {
-        prefs.edit().remove(KEY_NOTES).apply()
-    }
-
-    /** 学習ストリーク（今日を含む直近の連続学習日数）を返す。途切れていたら0。 */
-    fun loadStreak(): Int {
-        val today = java.time.LocalDate.now().toEpochDay()
-        val last = prefs.getLong(KEY_LAST_STUDY_DAY, -1L)
-        val count = prefs.getInt(KEY_STREAK_COUNT, 0)
-        return when {
-            last < 0 -> 0
-            today - last <= 1 -> count
-            else -> 0
-        }
-    }
-
-    /** 今日の学習を記録し、更新後のストリークを返す。 */
-    fun recordStudySession(): Int {
-        val today = java.time.LocalDate.now().toEpochDay()
-        val last = prefs.getLong(KEY_LAST_STUDY_DAY, -1L)
-        val count = prefs.getInt(KEY_STREAK_COUNT, 0)
-        val next = when {
-            last == today -> count.coerceAtLeast(1)
-            last == today - 1 -> count + 1
-            else -> 1
-        }
+    fun clearLegacyConversationData() {
         prefs.edit()
-            .putLong(KEY_LAST_STUDY_DAY, today)
-            .putInt(KEY_STREAK_COUNT, next)
+            .remove(KEY_MESSAGES)
+            .remove(KEY_NOTES)
+            .remove(KEY_STREAK_COUNT)
+            .remove(KEY_LAST_STUDY_DAY)
             .apply()
-        return next
+    }
+
+    /** 全ローカルデータ削除の一部: 設定・フラグをリセットする(FR-010)。 */
+    fun clearAllPreferences() {
+        secureApiKeyStore.clear()
+        prefs.edit().clear().apply()
     }
 
     companion object {
         val DEFAULT_MODEL: String = LlmProvider.Gemini.defaultModel
-        const val DEFAULT_COACH_INSTRUCTIONS = "Be a calm, friendly coach. Keep the conversation moving and correct only the most useful point at a time."
-        private const val MAX_SAVED_MESSAGES = 120
-        private const val MAX_SAVED_NOTES = 200
+        const val DEFAULT_COACH_INSTRUCTIONS =
+            "ビジネスではなく日常会話を強化したいので、かしこまった話し方ではなくフランクに話してほしい。" +
+                "通じはするけど、ネイティブでは使わない表現など、細かなところも「ネイティブではこうだよ」と指摘してほしい。" +
+                "スラングや気の利いた言い回しを良く使う性格。解説部分だけは英語だけでなく日本語も併記して。"
         private const val KEY_PROVIDER = "provider"
         private const val KEY_MODEL = "model"
         private const val KEY_REMINDER_ENABLED = "reminder_enabled"
@@ -164,5 +139,8 @@ class AppStorage(context: Context) {
         private const val KEY_COACH_INSTRUCTIONS = "coach_instructions"
         private const val KEY_STREAK_COUNT = "streak_count"
         private const val KEY_LAST_STUDY_DAY = "last_study_day"
+        private const val KEY_ONBOARDING_DONE = "onboarding_done"
+        private const val KEY_LAST_QUICK_CHAT = "last_quick_chat_id"
+        private const val KEY_LEGACY_IMPORTED = "legacy_imported"
     }
 }
