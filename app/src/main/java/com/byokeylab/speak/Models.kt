@@ -140,6 +140,9 @@ object AppLinks {
     const val SITE = "https://byokey-lab.com/speak/english/"
     const val PRIVACY_POLICY = "https://byokey-lab.com/privacy"
     const val SUPPORT = "https://byokey-lab.com/support"
-    const val API_GUIDE = "https://byokey-lab.com/speak/english/api-guide"
+    const val API_GUIDE = "https://byokey-lab.com/guide/api/"
+
+    /** 料金シミュレーションつきのアプリ公式ページ */
+    const val PRICING_SIMULATOR = "https://byokey-lab.com/speak/english/"
     const val CONTACT_EMAIL = "byokey-lab@gmail.com"
 }

@@ -25,10 +25,17 @@ class AppStorage(context: Context) {
             englishLevel = runCatching {
                 EnglishLevel.valueOf(prefs.getString(KEY_LEVEL, EnglishLevel.A1.name) ?: EnglishLevel.A1.name)
             }.getOrDefault(EnglishLevel.A1),
-            coachInstructions = prefs.getString(KEY_COACH_INSTRUCTIONS, DEFAULT_COACH_INSTRUCTIONS)
-                ?.ifBlank { DEFAULT_COACH_INSTRUCTIONS }
-                ?: DEFAULT_COACH_INSTRUCTIONS
+            coachInstructions = migrateCoachInstructions(
+                prefs.getString(KEY_COACH_INSTRUCTIONS, DEFAULT_COACH_INSTRUCTIONS)
+                    ?.ifBlank { DEFAULT_COACH_INSTRUCTIONS }
+                    ?: DEFAULT_COACH_INSTRUCTIONS
+            )
         )
+    }
+
+    /** 旧バージョンのデフォルト文が保存されている場合は、新しいmd形式デフォルトへ置き換える。 */
+    private fun migrateCoachInstructions(stored: String): String {
+        return if (stored.trim() in LEGACY_COACH_DEFAULTS) DEFAULT_COACH_INSTRUCTIONS else stored
     }
 
     fun saveSettings(settings: AppSettings) {
@@ -140,6 +147,14 @@ class AppStorage(context: Context) {
             |## 解説の言語
             |- 解説部分だけは英語だけでなく日本語も併記する。
         """.trimMargin()
+
+        /** 過去バージョンで保存された可能性のあるデフォルト文(md移行判定用)。 */
+        private val LEGACY_COACH_DEFAULTS = setOf(
+            "Be a calm, friendly coach. Keep the conversation moving and correct only the most useful point at a time.",
+            "ビジネスではなく日常会話を強化したいので、かしこまった話し方ではなくフランクに話してほしい。" +
+                "通じはするけど、ネイティブでは使わない表現など、細かなところも「ネイティブではこうだよ」と指摘してほしい。" +
+                "スラングや気の利いた言い回しを良く使う性格。解説部分だけは英語だけでなく日本語も併記して。"
+        )
         private const val KEY_PROVIDER = "provider"
         private const val KEY_MODEL = "model"
         private const val KEY_REMINDER_ENABLED = "reminder_enabled"

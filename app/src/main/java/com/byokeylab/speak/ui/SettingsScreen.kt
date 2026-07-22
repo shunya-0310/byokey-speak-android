@@ -175,6 +175,14 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = Grimoire.InkFaded
             )
+            Text(
+                text = "モデルごとの月額目安は、公式サイトの料金シミュレーションで確認できます(1日の会話量から日本円で試算)。",
+                style = MaterialTheme.typography.bodySmall,
+                color = Grimoire.Ink
+            )
+            TextButton(onClick = { openUrl(context, AppLinks.PRICING_SIMULATOR) }) {
+                Text("料金シミュレーションを開く", color = Grimoire.GoldDark)
+            }
             TextButton(onClick = { openUrl(context, AppLinks.API_GUIDE) }) {
                 Text("APIキーの取得・設定ガイドを開く", color = Grimoire.GoldDark)
             }

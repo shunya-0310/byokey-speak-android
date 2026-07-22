@@ -14,6 +14,8 @@ class ChatRepository(private val db: AppDatabase) {
 
     fun observeQuickChats(): Flow<List<ChatWithPreview>> = db.chatDao().observeChats(ChatMode.Quick.name)
 
+    fun observeCoachChats(): Flow<List<ChatWithPreview>> = db.chatDao().observeChats(ChatMode.Coach.name)
+
     fun observeMessages(chatId: Long): Flow<List<ChatMessage>> =
         db.messageDao().observeMessages(chatId).map { list -> list.map { it.toChatMessage() } }
 
@@ -63,8 +65,8 @@ class ChatRepository(private val db: AppDatabase) {
 
     private suspend fun maybeAutoTitle(chatId: Long, firstMessage: String) {
         val chat = db.chatDao().chatById(chatId) ?: return
-        if (chat.mode != ChatMode.Quick.name) return
-        if (chat.title != "New chat") return
+        // 未編集の初期タイトルのままなら、最初のユーザー発話から自動命名する (Coach/Quick共通)
+        if (chat.title != "New chat" && chat.title != "Coach") return
         if (db.messageDao().userMessageCount(chatId) != 1) return
         db.chatDao().rename(chatId, StudyStats.deriveChatTitle(firstMessage))
     }

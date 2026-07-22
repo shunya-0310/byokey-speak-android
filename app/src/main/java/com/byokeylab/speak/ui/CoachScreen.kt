@@ -1,16 +1,22 @@
 package com.byokeylab.speak.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
@@ -25,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -54,9 +61,23 @@ fun CoachScreen(
     modifier: Modifier = Modifier
 ) {
     val chatId = viewModel.coachChatId ?: return
+    var showHistory by rememberSaveable { mutableStateOf(false) }
     var topicPanelVisible by rememberSaveable { mutableStateOf(false) }
     var selectedCategory by rememberSaveable { mutableStateOf(TopicCategory.DailyLife) }
     var suggestedTopic by rememberSaveable { mutableStateOf(TopicRepository.topicForToday()) }
+
+    if (showHistory) {
+        CoachHistoryList(
+            viewModel = viewModel,
+            onOpen = { id ->
+                viewModel.openCoachChat(id)
+                showHistory = false
+            },
+            onBack = { showHistory = false },
+            modifier = modifier
+        )
+        return
+    }
 
     ConversationPane(
         chatId = chatId,
@@ -71,6 +92,7 @@ fun CoachScreen(
             if (topicPanelVisible) {
                 TopicPanel(
                     topic = suggestedTopic,
+                    onSpeakTopic = { onSpeak(suggestedTopic) },
                     selectedCategory = selectedCategory,
                     onCategoryChange = { category ->
                         selectedCategory = category
@@ -104,6 +126,9 @@ fun CoachScreen(
                     TextButton(onClick = { topicPanelVisible = true }) {
                         Text("Topics", color = Grimoire.GoldDark)
                     }
+                    TextButton(onClick = { showHistory = true }) {
+                        Text("履歴", color = Grimoire.GoldDark)
+                    }
                     IconButton(onClick = { viewModel.newCoachConversation() }) {
                         Icon(
                             Icons.Default.Add,
@@ -117,10 +142,113 @@ fun CoachScreen(
     )
 }
 
+/** Coach会話の履歴一覧。Chatsと同じカードで開く/ピン留め/名前変更/削除ができる。 */
+@Composable
+private fun CoachHistoryList(
+    viewModel: AppViewModel,
+    onOpen: (Long) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val chats by viewModel.coachChats.collectAsState()
+    var renameTarget by rememberSaveable { mutableStateOf<Long?>(null) }
+    var deleteTarget by rememberSaveable { mutableStateOf<Long?>(null) }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back to coach",
+                    tint = Grimoire.GoldDark
+                )
+            }
+            Text(
+                text = "✦ Coach履歴",
+                style = MaterialTheme.typography.titleSmall,
+                color = Grimoire.Burgundy,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = {
+                viewModel.newCoachConversation()
+                onBack()
+            }) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "New coach conversation",
+                    tint = Grimoire.GoldDark
+                )
+            }
+        }
+
+        if (chats.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "まだ会話がありません。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontStyle = FontStyle.Italic,
+                    color = Grimoire.InkFaded
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(chats, key = { it.id }) { chat ->
+                    ChatListItem(
+                        chat = chat,
+                        onOpen = { onOpen(chat.id) },
+                        onPinToggle = { viewModel.setPinned(chat.id, !chat.pinned) },
+                        onRename = { renameTarget = chat.id },
+                        onDelete = { deleteTarget = chat.id }
+                    )
+                }
+                item { Spacer(modifier = Modifier.height(12.dp)) }
+            }
+        }
+    }
+
+    renameTarget?.let { id ->
+        RenameDialog(
+            currentTitle = chats.firstOrNull { it.id == id }?.title.orEmpty(),
+            onConfirm = { newTitle ->
+                viewModel.renameChat(id, newTitle)
+                renameTarget = null
+            },
+            onDismiss = { renameTarget = null }
+        )
+    }
+    deleteTarget?.let { id ->
+        DeleteChatDialog(
+            onConfirm = {
+                viewModel.deleteChat(id)
+                deleteTarget = null
+            },
+            onDismiss = { deleteTarget = null }
+        )
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TopicPanel(
     topic: String,
+    onSpeakTopic: () -> Unit,
     selectedCategory: TopicCategory,
     onCategoryChange: (TopicCategory) -> Unit,
     onRefreshTopic: () -> Unit,
@@ -156,11 +284,21 @@ private fun TopicPanel(
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text(
-                    text = topic,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Grimoire.Ink
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = topic,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Grimoire.Ink,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onSpeakTopic) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.VolumeUp,
+                            contentDescription = "Listen to topic",
+                            tint = Grimoire.GoldDark
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(10.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(

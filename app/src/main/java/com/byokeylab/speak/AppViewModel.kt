@@ -90,6 +90,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val quickChats: StateFlow<List<ChatWithPreview>> = repository.observeQuickChats()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val coachChats: StateFlow<List<ChatWithPreview>> = repository.observeCoachChats()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val notes: StateFlow<List<LearningNote>> = repository.observeNotes()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -178,6 +181,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Coach履歴カードから過去の会話を開く。 */
+    fun openCoachChat(chatId: Long) {
+        coachChatId = chatId
+    }
+
     // --- Chats (FR-004) ---
 
     fun openQuickChat(chatId: Long?) {
@@ -204,6 +212,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repository.deleteChat(chatId)
             if (openQuickChatId == chatId) openQuickChat(null)
+            if (coachChatId == chatId) coachChatId = repository.ensureCoachChat()
         }
     }
 

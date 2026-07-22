@@ -108,7 +108,13 @@ fun ConversationPane(
             items(messages, key = { it.id }) { message ->
                 MessageBubble(
                     message = message,
-                    onSpeak = { onSpeak(StudyStats.naturalReplyOf(message.text)) }
+                    onSpeak = {
+                        onSpeak(
+                            StudyStats.naturalReplyOf(message.text)
+                                .removePrefix("New topic:")
+                                .trim()
+                        )
+                    }
                 )
             }
             if (isSending) {
@@ -171,7 +177,7 @@ fun MessageBubble(
                         color = if (isUser) Grimoire.InkFaded else Grimoire.Burgundy,
                         modifier = Modifier.weight(1f)
                     )
-                    if (message.role == MessageRole.Coach) {
+                    if (message.role == MessageRole.Coach || message.role == MessageRole.System) {
                         IconButton(onClick = onSpeak, modifier = Modifier.size(28.dp)) {
                             Icon(
                                 Icons.AutoMirrored.Filled.VolumeUp,
@@ -256,7 +262,7 @@ fun ConversationComposer(
                     maxLines = 5,
                     placeholder = {
                         Text(
-                            "English / 日本語 どちらでもOK",
+                            "English / 日本語どちらでもOK(※音声入力は英語のみ)",
                             fontStyle = FontStyle.Italic,
                             color = Grimoire.InkFaded
                         )
