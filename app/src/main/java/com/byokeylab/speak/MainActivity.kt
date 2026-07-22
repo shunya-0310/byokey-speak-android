@@ -117,7 +117,9 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
         ttsRef.value?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "coach_reply")
     }
 
-    // 音声入力 (下書きへ追記する)
+    // 音声入力:
+    // - 会話入力欄 → 英語認識 (en-US) で下書きへ追記
+    // - Quick Assist → 日本語認識 (ja-JP) で質問欄へ追記
     var speechTargetChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     val speechLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -127,23 +129,36 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
                 ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
                 ?.firstOrNull()
                 .orEmpty()
-            val target = speechTargetChatId
-            if (spoken.isNotBlank() && target != null) {
-                viewModel.appendToDraft(target, spoken)
+            if (spoken.isNotBlank()) {
+                val target = speechTargetChatId
+                if (target != null) {
+                    viewModel.appendToDraft(target, spoken)
+                } else {
+                    viewModel.appendToAssistQuestion(spoken)
+                }
             }
         }
     }
-    val startMic: (Long) -> Unit = { chatId ->
-        speechTargetChatId = chatId
+    fun launchSpeech(languageTag: String, prompt: String) {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
             )
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "英語でも日本語でもOK")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, languageTag)
+            putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, true)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
         }
         runCatching { speechLauncher.launch(intent) }
+    }
+    val startMic: (Long) -> Unit = { chatId ->
+        speechTargetChatId = chatId
+        launchSpeech("en-US", "Speak in English")
+    }
+    val startAssistMic: () -> Unit = {
+        speechTargetChatId = null
+        launchSpeech("ja-JP", "日本語で話してください")
     }
 
     GrimoireTheme {
@@ -155,6 +170,7 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
             MainScaffold(
                 viewModel = viewModel,
                 onMic = startMic,
+                onAssistMic = startAssistMic,
                 onSpeak = speak
             )
         }
@@ -195,6 +211,7 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
 private fun MainScaffold(
     viewModel: AppViewModel,
     onMic: (Long) -> Unit,
+    onAssistMic: () -> Unit,
     onSpeak: (String) -> Unit
 ) {
     val stats by viewModel.dailyStats.collectAsState()
@@ -264,12 +281,14 @@ private fun MainScaffold(
                 MainTab.Coach -> CoachScreen(
                     viewModel = viewModel,
                     onMic = onMic,
+                    onAssistMic = onAssistMic,
                     onSpeak = onSpeak,
                     modifier = Modifier.fillMaxSize()
                 )
                 MainTab.Chats -> ChatsScreen(
                     viewModel = viewModel,
                     onMic = onMic,
+                    onAssistMic = onAssistMic,
                     onSpeak = onSpeak,
                     modifier = Modifier.fillMaxSize()
                 )

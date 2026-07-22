@@ -2,6 +2,7 @@ package com.byokeylab.speak.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -17,7 +18,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -39,7 +44,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.byokeylab.speak.AppLinks
@@ -49,7 +56,9 @@ import com.byokeylab.speak.AppViewModel
 import com.byokeylab.speak.EnglishLevel
 import com.byokeylab.speak.Grimoire
 import com.byokeylab.speak.LlmProvider
+import com.byokeylab.speak.ModelOption
 import com.byokeylab.speak.grimoireBorder
+import com.byokeylab.speak.modelOptions
 import kotlinx.coroutines.launch
 
 /**
@@ -150,7 +159,19 @@ fun SettingsScreen(
                 placeholder = { Text(provider.defaultModel) }
             )
             Text(
-                text = "モデルIDはAPIリクエストに使うIDです。プロバイダー側の課金設定や利用可能モデルは各公式サイトで確認してください。",
+                text = "主なモデル (タップで選択、右のアイコンでIDをコピー):",
+                style = MaterialTheme.typography.labelMedium,
+                color = Grimoire.Ink
+            )
+            provider.modelOptions.forEach { option ->
+                ModelOptionRow(
+                    option = option,
+                    selected = model.trim() == option.id,
+                    onSelect = { model = option.id }
+                )
+            }
+            Text(
+                text = "上記は${provider.label}の代表的なモデルです。最新のモデルや料金、プロバイダー側の課金設定は各公式サイトで確認してください。他のモデルIDを直接入力することもできます。",
                 style = MaterialTheme.typography.bodySmall,
                 color = Grimoire.InkFaded
             )
@@ -357,6 +378,69 @@ fun SettingsScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun ModelOptionRow(
+    option: ModelOption,
+    selected: Boolean,
+    onSelect: () -> Unit
+) {
+    val clipboard = LocalClipboardManager.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .grimoireBorder(8.dp)
+            .clickable(onClick = onSelect),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) Grimoire.ParchmentDeep else Grimoire.ParchmentLight
+        ),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = option.id,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Grimoire.Ink
+                    )
+                    if (option.recommended) {
+                        Text(
+                            text = " 【推奨】",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Grimoire.Burgundy
+                        )
+                    }
+                    if (selected) {
+                        Text(
+                            text = " ✓",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Grimoire.Moss
+                        )
+                    }
+                }
+                Text(
+                    text = option.note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Grimoire.InkFaded
+                )
+            }
+            IconButton(onClick = {
+                clipboard.setText(AnnotatedString(option.id))
+            }) {
+                Icon(
+                    Icons.Default.ContentCopy,
+                    contentDescription = "モデルIDをコピー",
+                    tint = Grimoire.GoldDark
+                )
+            }
+        }
     }
 }
 

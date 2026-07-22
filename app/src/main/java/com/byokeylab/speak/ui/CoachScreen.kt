@@ -49,12 +49,13 @@ import com.byokeylab.speak.grimoireBorder
 fun CoachScreen(
     viewModel: AppViewModel,
     onMic: (Long) -> Unit,
+    onAssistMic: () -> Unit,
     onSpeak: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val chatId = viewModel.coachChatId ?: return
     var topicPanelVisible by rememberSaveable { mutableStateOf(false) }
-    var selectedCategory by rememberSaveable { mutableStateOf(TopicCategory.Economy) }
+    var selectedCategory by rememberSaveable { mutableStateOf(TopicCategory.DailyLife) }
     var suggestedTopic by rememberSaveable { mutableStateOf(TopicRepository.topicForToday()) }
 
     ConversationPane(
@@ -62,6 +63,7 @@ fun CoachScreen(
         mode = ChatMode.Coach,
         viewModel = viewModel,
         onMic = onMic,
+        onAssistMic = onAssistMic,
         onSpeak = onSpeak,
         modifier = modifier,
         emptyHint = "そのまま話しかけてOK。英語でも日本語でも、コーチが会話を続けます。",

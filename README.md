@@ -27,9 +27,11 @@ BYOKey Speakは、自分のLLM APIキーを使う、買い切り型の語学会�
 
 | Provider | Default model | API |
 | --- | --- | --- |
-| Gemini | `gemini-3.5-flash` | Generate Content API |
-| OpenAI | `gpt-5-mini` | Responses API |
+| Gemini | `gemini-3.1-flash-lite` | Generate Content API |
+| OpenAI | `gpt-5.4-mini` | Responses API |
 | Claude | `claude-haiku-4-5-20251001` | Messages API |
+
+設定画面には各プロバイダーの代表的なモデル候補(推奨マーク・特徴つき)を表示し、タップで選択、アイコンでモデルIDをコピーできます。
 
 アプリではAPI呼び出しに使うモデルIDを指定できます。ただし、各プロバイダー側の課金設定、利用可能モデル、有効化状態はアプリから変更できません。APIキー、モデルID、課金設定は各プロバイダーの画面でユーザー自身が確認します。
 LLM利用料金はアプリ代金に含まれません。

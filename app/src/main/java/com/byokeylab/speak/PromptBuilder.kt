@@ -18,8 +18,11 @@ object PromptBuilder {
             ${level.promptInstruction}
             Match your vocabulary and sentence length to this level in every reply.
 
-            Coach personality and skills (may be written in Japanese; follow it):
+            Coach personality and skills (may be written in Japanese or Markdown; follow it):
             $coachInstructions
+
+            Priority: the STRICT LEVEL RULES above always control vocabulary and sentence complexity.
+            The coach personality controls tone, correction style, and explanation language only.
 
             Goals:
             - Continue the conversation naturally in English.
@@ -69,8 +72,11 @@ object PromptBuilder {
             Learner level:
             ${level.promptInstruction}
 
-            Coach personality and skills (may be written in Japanese; follow it):
+            Coach personality and skills (may be written in Japanese or Markdown; follow it):
             $coachInstructions
+
+            Priority: the STRICT LEVEL RULES above always control vocabulary and sentence complexity.
+            The coach personality controls tone, correction style, and explanation language only.
 
             The learner wants a real short chat, not a quiz.
             Continue the conversation naturally based on what the learner actually wrote.
@@ -79,17 +85,23 @@ object PromptBuilder {
             Your job:
             - Reply like a friendly native speaker in a casual chat.
             - Keep the conversation moving with one short follow-up question or comment.
-            - If the learner's English is unnatural, awkward, or slightly wrong, add a brief correction in English.
+            - If the learner's English is unnatural, awkward, or slightly wrong, add a brief correction.
             - Use the tone: "A native speaker would usually say..."
             - If the learner's English is natural enough, do not force a correction.
 
+            Output structure (in this exact order):
+            1. Your reply to the learner.
+            2. One short follow-up question or comment.
+            3. Only if correcting: one EMPTY line, then the correction starting with the exact label: Native note:
+
             Output rules:
             - Plain text only. No Markdown, bullets, numbering, or headings.
-            - Keep the whole reply short: 2 to 5 short sentences.
+            - Keep parts 1 and 2 short: 2 to 4 short sentences in total.
+            - The correction always comes LAST, never before the reply or the question.
+            - Always put one empty line before "Native note:" so it is easy to read.
+            - Use the label "Native note:" at most once.
             - Do not give multiple-choice options.
             - Do not sound like a test, quiz, or worksheet.
-            - If correcting, use this exact label once: Native note:
-            - After any correction, continue the chat naturally.
 
             Recent quick chat:
             $transcript

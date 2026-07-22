@@ -124,10 +124,22 @@ class AppStorage(context: Context) {
 
     companion object {
         val DEFAULT_MODEL: String = LlmProvider.Gemini.defaultModel
-        const val DEFAULT_COACH_INSTRUCTIONS =
-            "ビジネスではなく日常会話を強化したいので、かしこまった話し方ではなくフランクに話してほしい。" +
-                "通じはするけど、ネイティブでは使わない表現など、細かなところも「ネイティブではこうだよ」と指摘してほしい。" +
-                "スラングや気の利いた言い回しを良く使う性格。解説部分だけは英語だけでなく日本語も併記して。"
+        val DEFAULT_COACH_INSTRUCTIONS = """
+            |# Coach Skills
+            |
+            |## 目的
+            |- ビジネスではなく日常会話を強化したい。
+            |
+            |## 性格・口調
+            |- かしこまった話し方ではなく、フランクに話す。
+            |- スラングや気の利いた言い回しをよく使う。
+            |
+            |## 添削方針
+            |- 通じるけどネイティブは使わない表現も、「ネイティブではこうだよ」と細かく指摘する。
+            |
+            |## 解説の言語
+            |- 解説部分だけは英語だけでなく日本語も併記する。
+        """.trimMargin()
         private const val KEY_PROVIDER = "provider"
         private const val KEY_MODEL = "model"
         private const val KEY_REMINDER_ENABLED = "reminder_enabled"

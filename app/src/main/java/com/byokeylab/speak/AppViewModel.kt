@@ -28,6 +28,7 @@ enum class MainTab(val label: String) {
 
 data class QuickAssistUiState(
     val visibleFor: Long? = null,
+    val question: String = "",
     val loading: Boolean = false,
     val suggestions: List<AssistSuggestion> = emptyList(),
     val error: String? = null,
@@ -75,6 +76,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun appendToDraft(chatId: Long, addition: String) {
         drafts[chatId] = appendAssistText(draftOf(chatId), addition)
+    }
+
+    /** Quick Assist候補で下書きを全文差し替える(ユーザーが明示選択した場合のみ)。 */
+    fun replaceDraft(chatId: Long, text: String) {
+        drafts[chatId] = text
     }
 
     fun clearDraft(chatId: Long) {
@@ -209,6 +215,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun closeQuickAssist() {
         quickAssist = QuickAssistUiState()
+    }
+
+    fun updateAssistQuestion(text: String) {
+        quickAssist = quickAssist.copy(question = text)
+    }
+
+    /** 音声入力はQuick Assistの質問欄にも追記できる。 */
+    fun appendToAssistQuestion(addition: String) {
+        quickAssist = quickAssist.copy(question = appendAssistText(quickAssist.question, addition))
     }
 
     fun askQuickAssist(chatId: Long, currentDraft: String, stuckText: String) {

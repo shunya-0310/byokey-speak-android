@@ -60,6 +60,7 @@ import java.util.Locale
 fun ChatsScreen(
     viewModel: AppViewModel,
     onMic: (Long) -> Unit,
+    onAssistMic: () -> Unit,
     onSpeak: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -69,6 +70,7 @@ fun ChatsScreen(
             chatId = openChatId,
             viewModel = viewModel,
             onMic = onMic,
+            onAssistMic = onAssistMic,
             onSpeak = onSpeak,
             modifier = modifier
         )
@@ -82,6 +84,7 @@ private fun QuickChatDetail(
     chatId: Long,
     viewModel: AppViewModel,
     onMic: (Long) -> Unit,
+    onAssistMic: () -> Unit,
     onSpeak: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -93,6 +96,7 @@ private fun QuickChatDetail(
         mode = ChatMode.Quick,
         viewModel = viewModel,
         onMic = onMic,
+        onAssistMic = onAssistMic,
         onSpeak = onSpeak,
         modifier = modifier,
         emptyHint = "気軽にどうぞ。今日あったことを一言でもOK。",

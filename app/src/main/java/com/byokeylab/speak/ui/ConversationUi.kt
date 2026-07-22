@@ -1,6 +1,5 @@
 package com.byokeylab.speak.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,10 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -68,6 +64,7 @@ fun ConversationPane(
     mode: ChatMode,
     viewModel: AppViewModel,
     onMic: (Long) -> Unit,
+    onAssistMic: () -> Unit,
     onSpeak: (String) -> Unit,
     modifier: Modifier = Modifier,
     emptyHint: String = "Say hello to start the conversation.",
@@ -132,7 +129,7 @@ fun ConversationPane(
     }
 
     if (viewModel.quickAssist.visibleFor == chatId) {
-        QuickAssistSheet(chatId = chatId, viewModel = viewModel)
+        QuickAssistSheet(chatId = chatId, viewModel = viewModel, onMic = onAssistMic)
     }
 }
 
@@ -291,10 +288,10 @@ fun ConversationComposer(
 @Composable
 fun QuickAssistSheet(
     chatId: Long,
-    viewModel: AppViewModel
+    viewModel: AppViewModel,
+    onMic: () -> Unit
 ) {
     val state = viewModel.quickAssist
-    var stuckText by rememberSaveable(chatId) { mutableStateOf("") }
 
     ModalBottomSheet(
         onDismissRequest = { viewModel.closeQuickAssist() },
@@ -317,24 +314,29 @@ fun QuickAssistSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = Grimoire.InkFaded
             )
-            OutlinedTextField(
-                value = stuckText,
-                onValueChange = { stuckText = it },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 2,
-                maxLines = 4,
-                placeholder = { Text("例: 最近値上がりしてて外食を控えてる、って言いたい") },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Grimoire.Gold,
-                    unfocusedBorderColor = Grimoire.GoldDark.copy(alpha = 0.6f)
-                ),
-                enabled = !state.loading
-            )
+            Row(verticalAlignment = Alignment.Bottom) {
+                OutlinedTextField(
+                    value = state.question,
+                    onValueChange = { viewModel.updateAssistQuestion(it) },
+                    modifier = Modifier.weight(1f),
+                    minLines = 2,
+                    maxLines = 4,
+                    placeholder = { Text("例: 最近値上がりしてて外食を控えてる、って言いたい") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Grimoire.Gold,
+                        unfocusedBorderColor = Grimoire.GoldDark.copy(alpha = 0.6f)
+                    ),
+                    enabled = !state.loading
+                )
+                IconButton(onClick = onMic, enabled = !state.loading) {
+                    Icon(Icons.Default.Mic, contentDescription = "日本語で音声入力", tint = Grimoire.Burgundy)
+                }
+            }
             Button(
                 onClick = {
-                    viewModel.askQuickAssist(chatId, viewModel.draftOf(chatId), stuckText)
+                    viewModel.askQuickAssist(chatId, viewModel.draftOf(chatId), state.question)
                 },
-                enabled = stuckText.isNotBlank() && !state.loading,
+                enabled = state.question.isNotBlank() && !state.loading,
                 colors = ButtonDefaults.buttonColors(containerColor = Grimoire.Burgundy)
             ) {
                 Text(if (state.loading) "考え中..." else "AIに聞く")
@@ -368,7 +370,7 @@ fun QuickAssistSheet(
             }
             if (state.suggestions.isNotEmpty()) {
                 Text(
-                    text = "「挿入する」で入力欄に追記します。送信前に自由に編集できます。",
+                    text = "「追記」は入力欄の続きに足します。「差し替え」は入力欄を丸ごと置き換えます。送信前に自由に編集できます。",
                     style = MaterialTheme.typography.labelSmall,
                     color = Grimoire.Gold
                 )
@@ -376,21 +378,19 @@ fun QuickAssistSheet(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .grimoireBorder(8.dp)
-                            .clickable {
-                                viewModel.appendToDraft(chatId, suggestion.english)
-                                viewModel.closeQuickAssist()
-                            },
+                            .grimoireBorder(8.dp),
                         colors = CardDefaults.cardColors(containerColor = Grimoire.ParchmentDeep),
                         shape = RoundedCornerShape(8.dp),
                         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Text(
-                                text = suggestion.english,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Grimoire.Ink
-                            )
+                            SelectionContainer {
+                                Text(
+                                    text = suggestion.english,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Grimoire.Ink
+                                )
+                            }
                             if (suggestion.note.isNotBlank()) {
                                 Text(
                                     text = suggestion.note,
@@ -398,12 +398,20 @@ fun QuickAssistSheet(
                                     color = Grimoire.InkFaded
                                 )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "挿入する",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Grimoire.Burgundy
-                            )
+                            Row {
+                                TextButton(onClick = {
+                                    viewModel.appendToDraft(chatId, suggestion.english)
+                                    viewModel.closeQuickAssist()
+                                }) {
+                                    Text("追記", color = Grimoire.Burgundy)
+                                }
+                                TextButton(onClick = {
+                                    viewModel.replaceDraft(chatId, suggestion.english)
+                                    viewModel.closeQuickAssist()
+                                }) {
+                                    Text("差し替え", color = Grimoire.GoldDark)
+                                }
+                            }
                         }
                     }
                 }
