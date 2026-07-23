@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -125,12 +126,22 @@ fun ConversationPane(
         ConversationComposer(
             input = input,
             isSending = isSending,
+            autoMode = viewModel.autoMode,
             onInputChange = { viewModel.setDraft(chatId, it) },
             onSend = {
                 viewModel.send(chatId, mode, input) { viewModel.clearDraft(chatId) }
             },
             onMic = { onMic(chatId) },
-            onQuickAssist = { viewModel.openQuickAssist(chatId) }
+            onQuickAssist = { viewModel.openQuickAssist(chatId) },
+            onToggleAuto = {
+                viewModel.autoMode = !viewModel.autoMode
+                if (viewModel.autoMode) {
+                    // ONにした瞬間、直近のコーチ発話を読み上げてループを開始する
+                    messages.lastOrNull { it.role == MessageRole.Coach }?.let { last ->
+                        viewModel.coachReplyHook?.invoke(chatId, StudyStats.naturalReplyOf(last.text))
+                    }
+                }
+            }
         )
     }
 
@@ -146,9 +157,9 @@ fun MessageBubble(
 ) {
     val isUser = message.role == MessageRole.User
     val background = when (message.role) {
-        MessageRole.User -> Color(0xFFEADBB4)
+        MessageRole.User -> Grimoire.BubbleUser
         MessageRole.Coach -> Grimoire.ParchmentLight
-        MessageRole.System -> Color(0xFFE3CF9C)
+        MessageRole.System -> Grimoire.BubbleSystem
     }
 
     Row(
@@ -229,13 +240,23 @@ fun SendingIndicator(label: String = "The quill is writing...") {
 fun ConversationComposer(
     input: String,
     isSending: Boolean,
+    autoMode: Boolean,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
     onMic: () -> Unit,
-    onQuickAssist: () -> Unit
+    onQuickAssist: () -> Unit,
+    onToggleAuto: () -> Unit
 ) {
     Column {
         OrnamentDivider(modifier = Modifier.fillMaxWidth())
+        if (autoMode) {
+            Text(
+                text = "✦ Autoモード: 読み上げ後にマイクが起動します",
+                style = MaterialTheme.typography.labelSmall,
+                color = Grimoire.Gold,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+            )
+        }
         Surface(color = Color.Transparent) {
             Row(
                 modifier = Modifier
@@ -244,6 +265,13 @@ fun ConversationComposer(
                     .padding(12.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
+                IconButton(onClick = onToggleAuto) {
+                    Icon(
+                        Icons.Default.Headset,
+                        contentDescription = "ハンズフリー自動モード",
+                        tint = if (autoMode) Grimoire.Gold else Grimoire.InkFaded
+                    )
+                }
                 IconButton(onClick = onQuickAssist) {
                     Icon(
                         Icons.Default.AutoAwesome,
@@ -406,14 +434,12 @@ fun QuickAssistSheet(
                             }
                             Row {
                                 TextButton(onClick = {
-                                    viewModel.appendToDraft(chatId, suggestion.english)
-                                    viewModel.closeQuickAssist()
+                                    viewModel.adoptAssistSuggestion(chatId, suggestion, replace = false)
                                 }) {
                                     Text("追記", color = Grimoire.Burgundy)
                                 }
                                 TextButton(onClick = {
-                                    viewModel.replaceDraft(chatId, suggestion.english)
-                                    viewModel.closeQuickAssist()
+                                    viewModel.adoptAssistSuggestion(chatId, suggestion, replace = true)
                                 }) {
                                     Text("差し替え", color = Grimoire.GoldDark)
                                 }

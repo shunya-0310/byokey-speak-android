@@ -61,6 +61,18 @@ data class LearningNoteEntity(
     val createdAt: Long
 )
 
+@Entity(tableName = "vocab_cards")
+data class VocabCardEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val expression: String,
+    val meaning: String,
+    /** VocabSource.name */
+    val source: String,
+    val chatId: Long? = null,
+    val favorite: Boolean = false,
+    val createdAt: Long
+)
+
 @Entity(tableName = "daily_stats")
 data class DailyStatEntity(
     @PrimaryKey val epochDay: Long,
@@ -166,6 +178,24 @@ interface LearningNoteDao {
 }
 
 @Dao
+interface VocabCardDao {
+    @Query("SELECT * FROM vocab_cards ORDER BY id DESC")
+    fun observeAll(): Flow<List<VocabCardEntity>>
+
+    @Insert
+    suspend fun insert(card: VocabCardEntity): Long
+
+    @Query("UPDATE vocab_cards SET favorite = :favorite WHERE id = :id")
+    suspend fun setFavorite(id: Long, favorite: Boolean)
+
+    @Query("DELETE FROM vocab_cards WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM vocab_cards")
+    suspend fun deleteAll()
+}
+
+@Dao
 interface DailyStatDao {
     @Query("SELECT * FROM daily_stats ORDER BY epochDay DESC")
     fun observeAll(): Flow<List<DailyStatEntity>>
@@ -185,20 +215,37 @@ interface DailyStatDao {
         ChatEntity::class,
         MessageEntity::class,
         LearningNoteEntity::class,
+        VocabCardEntity::class,
         DailyStatEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
     abstract fun messageDao(): MessageDao
     abstract fun learningNoteDao(): LearningNoteDao
+    abstract fun vocabCardDao(): VocabCardDao
     abstract fun dailyStatDao(): DailyStatDao
 
     companion object {
         @Volatile
         private var instance: AppDatabase? = null
+
+        private val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `vocab_cards` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`expression` TEXT NOT NULL, " +
+                        "`meaning` TEXT NOT NULL, " +
+                        "`source` TEXT NOT NULL, " +
+                        "`chatId` INTEGER, " +
+                        "`favorite` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+            }
+        }
 
         fun get(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
@@ -206,7 +253,10 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "byokey_speak.db"
-                ).build().also { instance = it }
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build()
+                    .also { instance = it }
             }
         }
     }

@@ -15,6 +15,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -22,8 +24,8 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,28 +39,31 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.byokeylab.speak.AppViewModel
 import com.byokeylab.speak.Grimoire
-import com.byokeylab.speak.LearningNote
+import com.byokeylab.speak.VocabCard
 import com.byokeylab.speak.grimoireBorder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * Review (FR-007): 学習メモの復習。
- * 未復習/復習済みの切り替え、削除。
+ * Review (FR-007): 単語帳。
+ * 会話から抽出した表現・イディオムをカードでめくる。
+ * お気に入り(★)、出所(Coach/Chat/Assist)表示、ソート(日付/ABC/お気に入り)。
  */
 @Composable
 fun ReviewScreen(
     viewModel: AppViewModel,
     modifier: Modifier = Modifier
 ) {
-    val notes by viewModel.notes.collectAsState()
-    var filter by rememberSaveable { mutableStateOf(ReviewFilter.All) }
+    val cards by viewModel.vocabCards.collectAsState()
+    var sort by rememberSaveable { mutableStateOf(VocabSort.Date) }
 
-    val filtered = when (filter) {
-        ReviewFilter.All -> notes
-        ReviewFilter.Unreviewed -> notes.filter { !it.reviewed }
-        ReviewFilter.Reviewed -> notes.filter { it.reviewed }
+    val sorted = when (sort) {
+        VocabSort.Date -> cards.sortedByDescending { it.timestampMillis }
+        VocabSort.Alphabet -> cards.sortedBy { it.expression.lowercase() }
+        VocabSort.Favorite -> cards.sortedWith(
+            compareByDescending<VocabCard> { it.favorite }.thenByDescending { it.timestampMillis }
+        )
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -70,15 +75,15 @@ fun ReviewScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = "✦ Review",
+                text = "✦ 単語帳",
                 style = MaterialTheme.typography.titleMedium,
                 color = Grimoire.BurgundyDeep,
                 modifier = Modifier.weight(1f)
             )
-            ReviewFilter.entries.forEach { candidate ->
+            VocabSort.entries.forEach { candidate ->
                 FilterChip(
-                    selected = filter == candidate,
-                    onClick = { filter = candidate },
+                    selected = sort == candidate,
+                    onClick = { sort = candidate },
                     label = { Text(candidate.label) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = Grimoire.Burgundy,
@@ -88,7 +93,7 @@ fun ReviewScreen(
             }
         }
 
-        if (filtered.isEmpty()) {
+        if (sorted.isEmpty()) {
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -97,7 +102,7 @@ fun ReviewScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "このページはまだ空白です。\n会話するとコーチの指摘がここに保存されます。",
+                    text = "まだカードがありません。\n会話すると、覚えたい表現がここに貯まっていきます。",
                     style = MaterialTheme.typography.bodyMedium,
                     fontStyle = FontStyle.Italic,
                     textAlign = TextAlign.Center,
@@ -112,11 +117,11 @@ fun ReviewScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(filtered, key = { it.id }) { note ->
-                    ReviewNoteCard(
-                        note = note,
-                        onToggleReviewed = { viewModel.setNoteReviewed(note.id, !note.reviewed) },
-                        onDelete = { viewModel.deleteNote(note.id) }
+                items(sorted, key = { it.id }) { card ->
+                    VocabCardItem(
+                        card = card,
+                        onToggleFavorite = { viewModel.setVocabFavorite(card.id, !card.favorite) },
+                        onDelete = { viewModel.deleteVocabCard(card.id) }
                     )
                 }
                 item { Spacer(modifier = Modifier.height(12.dp)) }
@@ -125,80 +130,86 @@ fun ReviewScreen(
     }
 }
 
-private enum class ReviewFilter(val label: String) {
-    All("All"),
-    Unreviewed("未復習"),
-    Reviewed("復習済み")
+private enum class VocabSort(val label: String) {
+    Date("日付"),
+    Alphabet("ABC"),
+    Favorite("★")
 }
 
 @Composable
-private fun ReviewNoteCard(
-    note: LearningNote,
-    onToggleReviewed: () -> Unit,
+private fun VocabCardItem(
+    card: VocabCard,
+    onToggleFavorite: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
-        modifier = Modifier.grimoireBorder(10.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (note.reviewed) Grimoire.ParchmentDeep else Grimoire.ParchmentLight
-        ),
-        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .grimoireBorder(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Grimoire.ParchmentLight),
+        shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            Row(verticalAlignment = Alignment.Top) {
+                SelectionContainer(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = card.expression,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Grimoire.Ink
+                    )
+                }
+                IconButton(onClick = onToggleFavorite) {
+                    Icon(
+                        imageVector = if (card.favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = "お気に入り",
+                        tint = if (card.favorite) Grimoire.Gold else Grimoire.InkFaded
+                    )
+                }
+            }
+            if (card.meaning.isNotBlank()) {
+                SelectionContainer {
+                    Text(
+                        text = card.meaning,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Grimoire.InkFaded
+                    )
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = Grimoire.ParchmentDeep,
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = card.source.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Grimoire.Burgundy,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.padding(4.dp))
                 Text(
-                    text = "✦ ${formatNoteDate(note.timestampMillis)}",
+                    text = formatCardDate(card.timestampMillis),
                     style = MaterialTheme.typography.labelSmall,
                     color = Grimoire.Gold,
                     modifier = Modifier.weight(1f)
                 )
-                TextButton(onClick = onToggleReviewed) {
-                    Text(
-                        text = if (note.reviewed) "復習済み ✓" else "復習した",
-                        color = if (note.reviewed) Grimoire.Moss else Grimoire.Burgundy
-                    )
-                }
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete note", tint = Grimoire.GoldDark)
-                }
-            }
-            SelectionContainer {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Your sentence:\n${note.sourceMessage}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontStyle = FontStyle.Italic,
-                        color = Grimoire.InkFaded
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "カードを削除",
+                        tint = Grimoire.GoldDark
                     )
-                    Text(
-                        text = "Coach notes:\n${note.coachNotes}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Grimoire.Ink
-                    )
-                    if (note.betterOptions.isNotBlank()) {
-                        Text(
-                            text = "Better options:\n${note.betterOptions}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Grimoire.Ink
-                        )
-                    }
-                    if (note.japaneseNote.isNotBlank()) {
-                        Text(
-                            text = "日本語メモ:\n${note.japaneseNote}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Grimoire.Ink
-                        )
-                    }
                 }
             }
         }
     }
 }
 
-private fun formatNoteDate(timestampMillis: Long): String {
-    return SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(timestampMillis))
+private fun formatCardDate(timestampMillis: Long): String {
+    return SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(Date(timestampMillis))
 }

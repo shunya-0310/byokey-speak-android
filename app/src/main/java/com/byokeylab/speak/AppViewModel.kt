@@ -59,6 +59,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** APIキー未設定のまま送信しようとしたときの誘導ダイアログ (FR-001) */
     var showSetupPrompt by mutableStateOf(false)
 
+    /** ハンズフリー自動ループ (読み上げ→マイク→送信→読み上げ...) */
+    var autoMode by mutableStateOf(false)
+
+    /** コーチ返信到着時にMainActivityが読み上げ+マイク起動を行うためのフック */
+    var coachReplyHook: ((chatId: Long, naturalReply: String) -> Unit)? = null
+
     var quickAssist by mutableStateOf(QuickAssistUiState())
         private set
 
@@ -93,7 +99,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val coachChats: StateFlow<List<ChatWithPreview>> = repository.observeCoachChats()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val notes: StateFlow<List<LearningNote>> = repository.observeNotes()
+    val vocabCards: StateFlow<List<VocabCard>> = repository.observeVocabCards()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val dailyStats: StateFlow<List<DailyStatEntity>> = repository.observeDailyStats()
@@ -160,11 +166,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val kind = (error as? LlmException)?.kind ?: LlmErrorKind.Unknown
                 "Sorry, I couldn't reach the coach.\n\n日本語解説: ${kind.userMessage}"
             }
-            repository.appendMessage(chatId, MessageRole.Coach, reply)
-            LearningNoteExtractor.fromCoachResponse(reply, trimmed)?.let { note ->
-                repository.saveNote(note, chatId)
+            // 単語帳行(Vocab:)を抽出し、表示テキストからは取り除く
+            val extracted = VocabExtractor.extract(reply)
+            val displayText = extracted.cleanText.ifBlank { reply }
+            repository.appendMessage(chatId, MessageRole.Coach, displayText)
+            val source = if (mode == ChatMode.Coach) VocabSource.Coach else VocabSource.Chats
+            extracted.vocab.forEach { draft ->
+                repository.saveVocabCard(draft.expression, draft.meaning, source, chatId)
             }
             sendingChatId = null
+            if (autoMode) {
+                coachReplyHook?.invoke(chatId, StudyStats.naturalReplyOf(displayText))
+            }
         }
     }
 
@@ -267,14 +280,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // --- Review (FR-007) ---
-
-    fun setNoteReviewed(noteId: Long, reviewed: Boolean) {
-        viewModelScope.launch { repository.setNoteReviewed(noteId, reviewed) }
+    /** Quick Assist候補を採用したとき、その表現を単語帳にも保存する。 */
+    fun adoptAssistSuggestion(chatId: Long, suggestion: AssistSuggestion, replace: Boolean) {
+        if (replace) replaceDraft(chatId, suggestion.english) else appendToDraft(chatId, suggestion.english)
+        viewModelScope.launch {
+            repository.saveVocabCard(suggestion.english, suggestion.note, VocabSource.QuickAssist, chatId)
+        }
+        closeQuickAssist()
     }
 
-    fun deleteNote(noteId: Long) {
-        viewModelScope.launch { repository.deleteNote(noteId) }
+    // --- Review: 単語帳 (FR-007) ---
+
+    fun setVocabFavorite(cardId: Long, favorite: Boolean) {
+        viewModelScope.launch { repository.setVocabFavorite(cardId, favorite) }
+    }
+
+    fun deleteVocabCard(cardId: Long) {
+        viewModelScope.launch { repository.deleteVocabCard(cardId) }
     }
 
     // --- Settings ---

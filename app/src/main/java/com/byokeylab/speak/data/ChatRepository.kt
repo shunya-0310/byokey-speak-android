@@ -4,6 +4,8 @@ import com.byokeylab.speak.ChatMessage
 import com.byokeylab.speak.LearningNote
 import com.byokeylab.speak.MessageRole
 import com.byokeylab.speak.StudyStats
+import com.byokeylab.speak.VocabCard
+import com.byokeylab.speak.VocabSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
@@ -104,6 +106,31 @@ class ChatRepository(private val db: AppDatabase) {
 
     suspend fun deleteNote(noteId: Long) = db.learningNoteDao().delete(noteId)
 
+    // --- 単語帳 (Review) ---
+
+    fun observeVocabCards(): Flow<List<VocabCard>> =
+        db.vocabCardDao().observeAll().map { list -> list.map { it.toVocabCard() } }
+
+    suspend fun saveVocabCard(expression: String, meaning: String, source: VocabSource, chatId: Long?) {
+        val trimmed = expression.trim()
+        if (trimmed.isBlank()) return
+        db.vocabCardDao().insert(
+            VocabCardEntity(
+                expression = trimmed,
+                meaning = meaning.trim(),
+                source = source.name,
+                chatId = chatId,
+                createdAt = System.currentTimeMillis()
+            )
+        )
+        bumpToday { it.copy(notesSaved = it.notesSaved + 1) }
+    }
+
+    suspend fun setVocabFavorite(cardId: Long, favorite: Boolean) =
+        db.vocabCardDao().setFavorite(cardId, favorite)
+
+    suspend fun deleteVocabCard(cardId: Long) = db.vocabCardDao().delete(cardId)
+
     suspend fun recordTurn() = bumpToday { it.copy(turns = it.turns + 1) }
 
     suspend fun recordAssistUse() = bumpToday { it.copy(assistUses = it.assistUses + 1) }
@@ -121,7 +148,10 @@ class ChatRepository(private val db: AppDatabase) {
         db.chatDao().deleteAll()
     }
 
-    suspend fun deleteAllNotes() = db.learningNoteDao().deleteAll()
+    suspend fun deleteAllNotes() {
+        db.learningNoteDao().deleteAll()
+        db.vocabCardDao().deleteAll()
+    }
 
     suspend fun deleteAllProgress() = db.dailyStatDao().deleteAll()
 
@@ -173,6 +203,15 @@ private fun MessageEntity.toChatMessage() = ChatMessage(
     id = id,
     role = runCatching { MessageRole.valueOf(role) }.getOrDefault(MessageRole.System),
     text = text,
+    timestampMillis = createdAt
+)
+
+private fun VocabCardEntity.toVocabCard() = VocabCard(
+    id = id,
+    expression = expression,
+    meaning = meaning,
+    source = runCatching { VocabSource.valueOf(source) }.getOrDefault(VocabSource.Coach),
+    favorite = favorite,
     timestampMillis = createdAt
 )
 

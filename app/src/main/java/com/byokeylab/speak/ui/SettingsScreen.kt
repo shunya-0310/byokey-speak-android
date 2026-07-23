@@ -52,11 +52,14 @@ import androidx.compose.ui.unit.dp
 import com.byokeylab.speak.AppLinks
 import com.byokeylab.speak.AppSettings
 import com.byokeylab.speak.AppStorage
+import com.byokeylab.speak.AppTheme
 import com.byokeylab.speak.AppViewModel
 import com.byokeylab.speak.EnglishLevel
 import com.byokeylab.speak.Grimoire
+import com.byokeylab.speak.Guides
 import com.byokeylab.speak.LlmProvider
 import com.byokeylab.speak.ModelOption
+import com.byokeylab.speak.VoiceGender
 import com.byokeylab.speak.grimoireBorder
 import com.byokeylab.speak.modelOptions
 import kotlinx.coroutines.launch
@@ -82,6 +85,8 @@ fun SettingsScreen(
     var level by rememberSaveable(settings.englishLevel) { mutableStateOf(settings.englishLevel) }
     var coachInstructions by rememberSaveable(settings.coachInstructions) { mutableStateOf(settings.coachInstructions) }
     var reminderEnabled by rememberSaveable(settings.dailyReminderEnabled) { mutableStateOf(settings.dailyReminderEnabled) }
+    var theme by rememberSaveable(settings.theme) { mutableStateOf(settings.theme) }
+    var voiceGender by rememberSaveable(settings.voiceGender) { mutableStateOf(settings.voiceGender) }
     var hourText by rememberSaveable(settings.reminderHour) { mutableStateOf(settings.reminderHour.toString()) }
     var minuteText by rememberSaveable(settings.reminderMinute) { mutableStateOf(settings.reminderMinute.toString().padStart(2, '0')) }
 
@@ -98,7 +103,9 @@ fun SettingsScreen(
         reminderHour = hourText.toIntOrNull()?.coerceIn(0, 23) ?: 7,
         reminderMinute = minuteText.toIntOrNull()?.coerceIn(0, 59) ?: 15,
         englishLevel = level,
-        coachInstructions = coachInstructions.trim().ifBlank { AppStorage.DEFAULT_COACH_INSTRUCTIONS }
+        coachInstructions = coachInstructions.trim().ifBlank { AppStorage.DEFAULT_COACH_INSTRUCTIONS },
+        theme = theme,
+        voiceGender = voiceGender
     )
 
     Column(
@@ -262,6 +269,43 @@ fun SettingsScreen(
             )
         }
 
+        // --- 表示と音声 ---
+        SectionCard(title = "表示と音声") {
+            Text("テーマ", style = MaterialTheme.typography.labelLarge, color = Grimoire.Ink)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                AppTheme.entries.forEach { candidate ->
+                    FilterChip(
+                        selected = theme == candidate,
+                        onClick = { theme = candidate },
+                        label = { Text(candidate.label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Grimoire.Burgundy,
+                            selectedLabelColor = Grimoire.ParchmentLight
+                        )
+                    )
+                }
+            }
+            Text("読み上げの声", style = MaterialTheme.typography.labelLarge, color = Grimoire.Ink)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                VoiceGender.entries.forEach { candidate ->
+                    FilterChip(
+                        selected = voiceGender == candidate,
+                        onClick = { voiceGender = candidate },
+                        label = { Text(candidate.label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Grimoire.Burgundy,
+                            selectedLabelColor = Grimoire.ParchmentLight
+                        )
+                    )
+                }
+            }
+            Text(
+                text = "※端末に入っている音声によっては、声の違いが小さい場合があります。",
+                style = MaterialTheme.typography.bodySmall,
+                color = Grimoire.InkFaded
+            )
+        }
+
         // --- 通知 ---
         SectionCard(title = "通知") {
             Row(
@@ -322,6 +366,26 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(action.label, color = Grimoire.Burgundy)
+                }
+            }
+        }
+
+        // --- ヘルプ (同梱PDFガイド) ---
+        SectionCard(title = "ヘルプ") {
+            Text(
+                text = "BYOKの仕組みやAPIキーの設定方法は、いつでもここから確認できます。",
+                style = MaterialTheme.typography.bodySmall,
+                color = Grimoire.InkFaded
+            )
+            Guides.all.forEach { guide ->
+                TextButton(
+                    onClick = { guide.assetPath?.let { Guides.open(context, it) } },
+                    enabled = guide.assetPath != null
+                ) {
+                    Text(
+                        text = guide.title,
+                        color = if (guide.assetPath != null) Grimoire.GoldDark else Grimoire.InkFaded
+                    )
                 }
             }
         }
@@ -455,7 +519,7 @@ private fun ModelOptionRow(
 private enum class DeleteAction(val label: String, val description: String) {
     ApiKey("APIキーを削除", "保存されたAPIキーを端末から削除します。"),
     Conversations("会話履歴を削除", "CoachとChatsのすべての会話を削除します。"),
-    Notes("学習メモを削除", "Reviewのすべての学習メモを削除します。"),
+    Notes("単語帳を削除", "Reviewの単語帳カードをすべて削除します。"),
     Progress("進捗データを削除", "ストリークや学習統計を削除します。"),
     Everything("全ローカルデータを削除", "APIキー、会話、メモ、進捗、設定のすべてを削除して初期状態に戻します。")
 }

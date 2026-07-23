@@ -5,8 +5,11 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -97,13 +100,29 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
         }
     }
 
-    // TTS (コーチ返信の読み上げ)
+    // TTS (コーチ返信の読み上げ + ハンズフリー自動ループ)
     val ttsRef = remember { mutableStateOf<TextToSpeech?>(null) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val startMicRef = remember { mutableStateOf<((Long) -> Unit)?>(null) }
     DisposableEffect(Unit) {
         var engine: TextToSpeech? = null
         engine = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 engine?.language = Locale.US
+                engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {}
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {}
+                    override fun onDone(utteranceId: String?) {
+                        // 自動モード: 読み上げが終わったらマイクを起動する
+                        if (utteranceId != null && utteranceId.startsWith("auto_")) {
+                            val chatId = utteranceId.removePrefix("auto_").toLongOrNull() ?: return
+                            mainHandler.post {
+                                if (viewModel.autoMode) startMicRef.value?.invoke(chatId)
+                            }
+                        }
+                    }
+                })
                 ttsRef.value = engine
             }
         }
@@ -113,8 +132,41 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
             ttsRef.value = null
         }
     }
+
+    /** 設定に応じて声(男性/女性)を切り替える。該当ボイスがない端末ではピッチで代用。 */
+    fun applyVoiceStyle(engine: TextToSpeech) {
+        val male = viewModel.settings.voiceGender == VoiceGender.Male
+        val voice = runCatching {
+            engine.voices
+                ?.filter { it.locale.language == "en" }
+                ?.firstOrNull { candidate ->
+                    val name = candidate.name.lowercase(Locale.ROOT)
+                    if (male) "male" in name && "female" !in name else "female" in name
+                }
+        }.getOrNull()
+        if (voice != null) {
+            runCatching { engine.voice = voice }
+            engine.setPitch(1.0f)
+        } else {
+            engine.setPitch(if (male) 0.7f else 1.05f)
+        }
+    }
+
     val speak: (String) -> Unit = { text ->
-        ttsRef.value?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "coach_reply")
+        ttsRef.value?.let { engine ->
+            applyVoiceStyle(engine)
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "coach_reply")
+        }
+    }
+
+    // コーチ返信到着時の自動読み上げ(読み上げ完了でマイク起動につながる)
+    androidx.compose.runtime.SideEffect {
+        viewModel.coachReplyHook = { chatId, naturalReply ->
+            ttsRef.value?.let { engine ->
+                applyVoiceStyle(engine)
+                engine.speak(naturalReply, TextToSpeech.QUEUE_FLUSH, null, "auto_$chatId")
+            }
+        }
     }
 
     // 音声入力:
@@ -156,12 +208,13 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
         speechTargetChatId = chatId
         launchSpeech("en-US", "Speak in English")
     }
+    startMicRef.value = startMic
     val startAssistMic: () -> Unit = {
         speechTargetChatId = null
         launchSpeech("ja-JP", "日本語で話してください")
     }
 
-    GrimoireTheme {
+    GrimoireTheme(darkTheme = viewModel.settings.theme == AppTheme.Dark) {
         if (!viewModel.onboardingDone) {
             OnboardingScreen(onFinish = { goToSettings ->
                 viewModel.completeOnboarding(goToSettings)

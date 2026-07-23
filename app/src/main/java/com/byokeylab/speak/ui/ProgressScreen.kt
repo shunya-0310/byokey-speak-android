@@ -43,14 +43,14 @@ fun ProgressScreen(
     modifier: Modifier = Modifier
 ) {
     val stats by viewModel.dailyStats.collectAsState()
-    val notes by viewModel.notes.collectAsState()
+    val cards by viewModel.vocabCards.collectAsState()
 
     val streak = viewModel.streakOf(stats)
     val totalStudyDays = stats.count { it.turns > 0 }
     val totalTurns = stats.sumOf { it.turns }
     val totalAssist = stats.sumOf { it.assistUses }
-    val totalNotes = notes.size
-    val reviewedNotes = notes.count { it.reviewed }
+    val totalCards = cards.size
+    val favoriteCards = cards.count { it.favorite }
 
     Column(
         modifier = modifier
@@ -100,8 +100,8 @@ fun ProgressScreen(
             StatCard(label = "累計ターン", value = "$totalTurns", modifier = Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCard(label = "保存した表現", value = "$totalNotes", modifier = Modifier.weight(1f))
-            StatCard(label = "復習完了", value = "$reviewedNotes", modifier = Modifier.weight(1f))
+            StatCard(label = "単語帳のカード", value = "$totalCards", modifier = Modifier.weight(1f))
+            StatCard(label = "お気に入り ★", value = "$favoriteCards", modifier = Modifier.weight(1f))
         }
         StatCard(
             label = "Quick Assistで乗り切った回数",

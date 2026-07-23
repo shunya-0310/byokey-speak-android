@@ -32,29 +32,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.byokeylab.speak.Grimoire
+import com.byokeylab.speak.Guides
 import com.byokeylab.speak.grimoireBorder
 
 private data class OnboardingPage(
     val title: String,
-    val body: String
+    val body: String,
+    val showGuides: Boolean = false
 )
 
 private val pages = listOf(
     OnboardingPage(
         title = "BYOKey Speakへようこそ",
-        body = "AIと英会話を練習するアプリです。\n\nこのアプリは買い切り。月額はありません。\nかかるのはAI(LLM)のAPI利用料だけです。"
+        body = "AIと英会話を練習するアプリです。\n\nこのアプリは買い切りで、月額料金はありません。\nそのかわり、AI(LLM)のAPI利用料が「使った分だけ」(従量課金)かかります。\n\n【目安】推奨モデルのGemini 3.1 Flash-Liteなら、毎日50往復会話しても月間で数百円程度です(1日10往復なら月数十円程度)。",
+        showGuides = false
     ),
     OnboardingPage(
-        title = "自分のAPIキーを使います",
-        body = "Gemini・OpenAI・Claudeのいずれかで、あなた自身がAPIキーを取得して設定します。\n\nAPI利用料は各プロバイダーへの支払いで、使った分だけ発生します(軽い英会話なら一般に低額です)。"
+        title = "BYOKの仕組みとAPIキー",
+        body = "BYOK(Bring Your Own Key)は、あなた自身が取得したAPIキーをアプリに設定して使う方式です。\n\nGemini・OpenAI・Claudeのいずれかで、APIキーを取得して設定してください。手順は下のガイドで図解しています(あとからSettings > ヘルプでいつでも見られます)。",
+        showGuides = true
+    ),
+    OnboardingPage(
+        title = "API利用の注意点",
+        body = "・API利用料はアプリ代金とは別に、各プロバイダーへ支払う従量課金です。\n・料金は使ったトークン量で決まります。使わない月はほぼ0円です。\n・各プロバイダーの管理画面で、利用上限(予算アラート)を設定しておくと安心です。\n・APIキーは他人と共有しないでください。",
+        showGuides = false
     ),
     OnboardingPage(
         title = "データの扱い",
-        body = "会話内容は、あなたが選んだLLMプロバイダーへ直接送信されます。\n\nBYOKey LabのサーバーにAPIキーや会話が保存されることはありません。会話・学習メモ・APIキーはすべてこの端末の中に保存され、いつでも削除できます。"
+        body = "会話内容は、あなたが選んだLLMプロバイダーへ直接送信されます。\n\nBYOKey LabのサーバーにAPIキーや会話が保存されることはありません。会話・単語帳・APIキーはすべてこの端末の中に保存され、いつでも削除できます。",
+        showGuides = false
     ),
     OnboardingPage(
         title = "始めましょう",
-        body = "最初にAPIキーを設定すると、30秒で会話を始められます。\n\n設定は後回しにしてもOK。その場合は、最初の送信前に設定画面へご案内します。"
+        body = "最初にAPIキーを設定すると、30秒で会話を始められます。\n\n設定は後回しにしてもOK。その場合は、最初の送信前に設定画面へご案内します。",
+        showGuides = false
     )
 )
 
@@ -109,6 +120,20 @@ fun OnboardingScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = Grimoire.Ink
                 )
+                if (page.showGuides) {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Guides.all.forEach { guide ->
+                        TextButton(
+                            onClick = { guide.assetPath?.let { Guides.open(context, it) } },
+                            enabled = guide.assetPath != null
+                        ) {
+                            Text(
+                                text = "▶ ${guide.title}",
+                                color = if (guide.assetPath != null) Grimoire.GoldDark else Grimoire.InkFaded
+                            )
+                        }
+                    }
+                }
             }
         }
 

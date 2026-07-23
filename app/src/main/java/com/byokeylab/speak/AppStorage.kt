@@ -29,7 +29,13 @@ class AppStorage(context: Context) {
                 prefs.getString(KEY_COACH_INSTRUCTIONS, DEFAULT_COACH_INSTRUCTIONS)
                     ?.ifBlank { DEFAULT_COACH_INSTRUCTIONS }
                     ?: DEFAULT_COACH_INSTRUCTIONS
-            )
+            ),
+            theme = runCatching {
+                AppTheme.valueOf(prefs.getString(KEY_THEME, AppTheme.Dark.name) ?: AppTheme.Dark.name)
+            }.getOrDefault(AppTheme.Dark),
+            voiceGender = runCatching {
+                VoiceGender.valueOf(prefs.getString(KEY_VOICE, VoiceGender.Female.name) ?: VoiceGender.Female.name)
+            }.getOrDefault(VoiceGender.Female)
         )
     }
 
@@ -48,6 +54,8 @@ class AppStorage(context: Context) {
             .putInt(KEY_REMINDER_MINUTE, settings.reminderMinute.coerceIn(0, 59))
             .putString(KEY_LEVEL, settings.englishLevel.name)
             .putString(KEY_COACH_INSTRUCTIONS, settings.coachInstructions.trim().ifBlank { DEFAULT_COACH_INSTRUCTIONS })
+            .putString(KEY_THEME, settings.theme.name)
+            .putString(KEY_VOICE, settings.voiceGender.name)
             .apply()
     }
 
@@ -166,6 +174,8 @@ class AppStorage(context: Context) {
         private const val KEY_COACH_INSTRUCTIONS = "coach_instructions"
         private const val KEY_STREAK_COUNT = "streak_count"
         private const val KEY_LAST_STUDY_DAY = "last_study_day"
+        private const val KEY_THEME = "app_theme"
+        private const val KEY_VOICE = "voice_gender"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         private const val KEY_LAST_QUICK_CHAT = "last_quick_chat_id"
         private const val KEY_LEGACY_IMPORTED = "legacy_imported"

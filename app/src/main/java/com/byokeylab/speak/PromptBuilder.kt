@@ -39,6 +39,12 @@ object PromptBuilder {
             Japanese explanation: Explain the nuance clearly and briefly in Japanese.
             Better options: Give 1 to 3 natural alternatives.
 
+            After everything, add 1 to 3 vocabulary lines for the app's flashcard deck.
+            Each line must be formatted exactly as:
+            Vocab: <English expression> | <short Japanese meaning>
+            Pick idioms, phrases, or word choices from this exchange that are worth memorizing.
+            These lines are hidden from the learner by the app, so never mention them in your reply.
+
             Rules:
             - If the learner's English is correct but not native-like, say so.
             - Do not rewrite everything. Focus on the most useful points.
@@ -93,6 +99,9 @@ object PromptBuilder {
             1. Your reply to the learner.
             2. One short follow-up question or comment.
             3. Only if correcting: one EMPTY line, then the correction starting with the exact label: Native note:
+            4. Optionally, 0 to 2 vocabulary lines for the app's flashcard deck, each formatted exactly as:
+               Vocab: <English expression> | <short Japanese meaning>
+               These lines are hidden from the learner by the app, so never mention them.
 
             Output rules:
             - Plain text only. No Markdown, bullets, numbering, or headings.

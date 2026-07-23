@@ -108,6 +108,16 @@ enum class EnglishLevel(val label: String, val promptInstruction: String) {
     )
 }
 
+enum class AppTheme(val label: String) {
+    Dark("ダーク"),
+    Light("ライト(羊皮紙)")
+}
+
+enum class VoiceGender(val label: String) {
+    Female("女性"),
+    Male("男性")
+}
+
 data class AppSettings(
     val provider: LlmProvider = LlmProvider.Gemini,
     val apiKey: String,
@@ -116,10 +126,29 @@ data class AppSettings(
     val reminderHour: Int,
     val reminderMinute: Int,
     val englishLevel: EnglishLevel = EnglishLevel.A1,
-    val coachInstructions: String = AppStorage.DEFAULT_COACH_INSTRUCTIONS
+    val coachInstructions: String = AppStorage.DEFAULT_COACH_INSTRUCTIONS,
+    val theme: AppTheme = AppTheme.Dark,
+    val voiceGender: VoiceGender = VoiceGender.Female
 ) {
     val isConfigured: Boolean get() = apiKey.isNotBlank()
 }
+
+/** 単語帳の出所 */
+enum class VocabSource(val label: String) {
+    Coach("Coach"),
+    Chats("Chat"),
+    QuickAssist("Assist")
+}
+
+/** 単語帳カード (Review画面) */
+data class VocabCard(
+    val id: Long,
+    val expression: String,
+    val meaning: String,
+    val source: VocabSource,
+    val favorite: Boolean,
+    val timestampMillis: Long
+)
 
 enum class TopicCategory(val label: String) {
     DailyLife("Daily life"),
