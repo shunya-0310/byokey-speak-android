@@ -11,6 +11,23 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
+data class LlmSource(val title: String, val url: String)
+
+data class LlmResult(
+    val text: String,
+    val sources: List<LlmSource> = emptyList(),
+    val searchAttempted: Boolean = false,
+    val searchUsed: Boolean = false
+) {
+    fun textWithSources(): String {
+        if (sources.isEmpty()) return text
+        val sourceText = sources.joinToString("\n") { source ->
+            "${source.title.ifBlank { source.url }}\n${source.url}"
+        }
+        return "$text\n\nSources:\n$sourceText"
+    }
+}
+
 class LlmClient {
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -18,14 +35,24 @@ class LlmClient {
         .build()
 
     suspend fun generate(provider: LlmProvider, apiKey: String, model: String, prompt: String): String {
+        return generateDetailed(provider, apiKey, model, prompt).text
+    }
+
+    suspend fun generateDetailed(
+        provider: LlmProvider,
+        apiKey: String,
+        model: String,
+        prompt: String,
+        enableWebSearch: Boolean = false
+    ): LlmResult {
         if (apiKey.isBlank()) {
             throw LlmException(LlmErrorKind.MissingApiKey, LlmErrorKind.MissingApiKey.userMessage)
         }
         return withContext(Dispatchers.IO) {
             when (provider) {
-                LlmProvider.Gemini -> generateWithGemini(apiKey, model, prompt)
-                LlmProvider.OpenAI -> generateWithOpenAi(apiKey, model, prompt)
-                LlmProvider.Anthropic -> generateWithAnthropic(apiKey, model, prompt)
+                LlmProvider.Gemini -> generateWithGemini(apiKey, model, prompt, enableWebSearch)
+                LlmProvider.OpenAI -> generateWithOpenAi(apiKey, model, prompt, enableWebSearch)
+                LlmProvider.Anthropic -> generateWithAnthropic(apiKey, model, prompt, enableWebSearch)
             }
         }
     }
@@ -42,8 +69,13 @@ class LlmClient {
         }
     }
 
-    private fun generateWithGemini(apiKey: String, model: String, prompt: String): String {
-        val body = JSONObject()
+    private fun generateWithGemini(
+        apiKey: String,
+        model: String,
+        prompt: String,
+        enableWebSearch: Boolean
+    ): LlmResult {
+        val bodyJson = JSONObject()
             .put(
                 "contents",
                 JSONArray().put(
@@ -57,6 +89,13 @@ class LlmClient {
                 "generationConfig",
                 JSONObject().put("temperature", 0.7).put("topP", 0.95)
             )
+        if (enableWebSearch) {
+            bodyJson.put(
+                "tools",
+                JSONArray().put(JSONObject().put("google_search", JSONObject()))
+            )
+        }
+        val body = bodyJson
             .toString()
             .toRequestBody(JSON)
 
@@ -69,15 +108,39 @@ class LlmClient {
             .build()
 
         val response = execute(request, LlmProvider.Gemini)
-        return collectTexts(response.optJSONArray("candidates"))
+        val text = collectTexts(response.optJSONArray("candidates"))
             .ifBlank { throw LlmException(LlmErrorKind.Provider, "Gemini returned no text.") }
+        val sources = collectSources(response)
+        return LlmResult(text, sources, enableWebSearch, sources.isNotEmpty())
     }
 
-    private fun generateWithOpenAi(apiKey: String, model: String, prompt: String): String {
-        val body = JSONObject()
+    private fun generateWithOpenAi(
+        apiKey: String,
+        model: String,
+        prompt: String,
+        enableWebSearch: Boolean
+    ): LlmResult {
+        val bodyJson = JSONObject()
             .put("model", model.trim().ifBlank { LlmProvider.OpenAI.defaultModel })
             .put("input", prompt)
             .put("store", false)
+        if (enableWebSearch) {
+            bodyJson
+                .put(
+                    "tools",
+                    JSONArray().put(
+                        JSONObject()
+                            .put("type", "web_search")
+                            .put("search_context_size", "low")
+                    )
+                )
+                .put("tool_choice", "auto")
+                .put(
+                    "include",
+                    JSONArray().put("web_search_call.action.sources")
+                )
+        }
+        val body = bodyJson
             .toString()
             .toRequestBody(JSON)
 
@@ -89,19 +152,43 @@ class LlmClient {
             .build()
 
         val response = execute(request, LlmProvider.OpenAI)
-        response.optString("output_text").takeIf { it.isNotBlank() }?.let { return it }
-        return collectTexts(response.optJSONArray("output"))
+        val text = response.optString("output_text").takeIf { it.isNotBlank() }
+            ?: collectTexts(response.optJSONArray("output"))
             .ifBlank { throw LlmException(LlmErrorKind.Provider, "OpenAI returned no text.") }
+        val sources = collectSources(response)
+        return LlmResult(
+            text = text,
+            sources = sources,
+            searchAttempted = enableWebSearch,
+            searchUsed = sources.isNotEmpty() || containsType(response, "web_search_call")
+        )
     }
 
-    private fun generateWithAnthropic(apiKey: String, model: String, prompt: String): String {
-        val body = JSONObject()
+    private fun generateWithAnthropic(
+        apiKey: String,
+        model: String,
+        prompt: String,
+        enableWebSearch: Boolean
+    ): LlmResult {
+        val bodyJson = JSONObject()
             .put("model", model.trim().ifBlank { LlmProvider.Anthropic.defaultModel })
             .put("max_tokens", 1200)
             .put(
                 "messages",
                 JSONArray().put(JSONObject().put("role", "user").put("content", prompt))
             )
+        if (enableWebSearch) {
+            bodyJson.put(
+                "tools",
+                JSONArray().put(
+                    JSONObject()
+                        .put("type", "web_search_20250305")
+                        .put("name", "web_search")
+                        .put("max_uses", 2)
+                )
+            )
+        }
+        val body = bodyJson
             .toString()
             .toRequestBody(JSON)
 
@@ -114,8 +201,15 @@ class LlmClient {
             .build()
 
         val response = execute(request, LlmProvider.Anthropic)
-        return collectTexts(response.optJSONArray("content"))
+        val text = collectTexts(response.optJSONArray("content"))
             .ifBlank { throw LlmException(LlmErrorKind.Provider, "Claude returned no text.") }
+        val sources = collectSources(response)
+        return LlmResult(
+            text = text,
+            sources = sources,
+            searchAttempted = enableWebSearch,
+            searchUsed = sources.isNotEmpty() || containsType(response, "web_search")
+        )
     }
 
     private fun execute(request: Request, provider: LlmProvider): JSONObject {
@@ -162,6 +256,49 @@ class LlmClient {
             is JSONArray -> {
                 for (index in 0 until value.length()) appendTexts(value.opt(index), output)
             }
+        }
+    }
+
+    private fun collectSources(root: JSONObject): List<LlmSource> {
+        val output = linkedMapOf<String, LlmSource>()
+        appendSources(root, output)
+        return output.values.take(6)
+    }
+
+    private fun appendSources(value: Any?, output: MutableMap<String, LlmSource>) {
+        when (value) {
+            is JSONObject -> {
+                val web = value.optJSONObject("web")
+                if (web != null) addSource(web, output)
+                addSource(value, output)
+                value.keys().forEach { key -> appendSources(value.opt(key), output) }
+            }
+            is JSONArray -> {
+                for (index in 0 until value.length()) appendSources(value.opt(index), output)
+            }
+        }
+    }
+
+    private fun addSource(value: JSONObject, output: MutableMap<String, LlmSource>) {
+        val url = sequenceOf("url", "uri")
+            .map(value::optString)
+            .firstOrNull { it.startsWith("https://") }
+            ?: return
+        val title = sequenceOf("title", "name")
+            .map(value::optString)
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
+        output.putIfAbsent(url, LlmSource(title, url))
+    }
+
+    private fun containsType(value: Any?, expected: String): Boolean {
+        return when (value) {
+            is JSONObject -> {
+                value.optString("type").contains(expected, ignoreCase = true) ||
+                    value.keys().asSequence().any { containsType(value.opt(it), expected) }
+            }
+            is JSONArray -> (0 until value.length()).any { containsType(value.opt(it), expected) }
+            else -> false
         }
     }
 

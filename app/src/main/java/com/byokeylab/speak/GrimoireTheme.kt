@@ -2,6 +2,7 @@ package com.byokeylab.speak
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -54,7 +56,7 @@ class GrimoirePalette(
 
     /** ページ背景のグラデーション */
     val pageBrush = if (isDark) {
-        Brush.verticalGradient(listOf(Color(0xFF1B140C), Color(0xFF221A10), Color(0xFF161009)))
+        Brush.verticalGradient(listOf(Color(0xFF0D1724), Color(0xFF142033), Color(0xFF0B1320)))
     } else {
         Brush.verticalGradient(listOf(Color(0xFFEBDCB6), Color(0xFFF4EAD0), Color(0xFFE6D4AA)))
     }
@@ -77,18 +79,18 @@ val LightGrimoire = GrimoirePalette(
 )
 
 val DarkGrimoire = GrimoirePalette(
-    Parchment = Color(0xFF1D160D),
-    ParchmentLight = Color(0xFF2A2113),
-    ParchmentDeep = Color(0xFF352A18),
-    Ink = Color(0xFFEADCBB),
-    InkFaded = Color(0xFFB29B70),
+    Parchment = Color(0xFF101B2C),
+    ParchmentLight = Color(0xFF1A2840),
+    ParchmentDeep = Color(0xFF22314E),
+    Ink = Color(0xFFE8DDBE),
+    InkFaded = Color(0xFFB8AA83),
     Burgundy = Color(0xFFD08A76),
     BurgundyDeep = Color(0xFFE2A691),
     Gold = Color(0xFFCFA43B),
     GoldDark = Color(0xFFA8842E),
     Moss = Color(0xFFA3B47E),
-    BubbleUser = Color(0xFF3B2F1A),
-    BubbleSystem = Color(0xFF41341D),
+    BubbleUser = Color(0xFF283A55),
+    BubbleSystem = Color(0xFF24324C),
     isDark = true
 )
 
@@ -221,8 +223,59 @@ fun GrimoireTheme(darkTheme: Boolean = true, content: @Composable () -> Unit) {
                     .fillMaxSize()
                     .background(palette.pageBrush)
             ) {
+                ParchmentTexture(palette)
                 content()
             }
+        }
+    }
+}
+
+@Composable
+private fun ParchmentTexture(palette: GrimoirePalette) {
+    val fiberColor = if (palette.isDark) {
+        Color.White.copy(alpha = 0.035f)
+    } else {
+        Color(0xFF6F4F22).copy(alpha = 0.08f)
+    }
+    val stainColor = if (palette.isDark) {
+        Color(0xFF05080E).copy(alpha = 0.14f)
+    } else {
+        Color(0xFF8A642B).copy(alpha = 0.07f)
+    }
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val stepY = 34f
+        var y = -stepY
+        var index = 0
+        while (y < size.height + stepY) {
+            val wobble = ((index * 37) % 19 - 9).toFloat()
+            drawLine(
+                color = fiberColor,
+                start = androidx.compose.ui.geometry.Offset(0f, y + wobble),
+                end = androidx.compose.ui.geometry.Offset(size.width, y + wobble + ((index % 5) - 2) * 3f),
+                strokeWidth = if (index % 3 == 0) 1.2f else 0.6f
+            )
+            y += stepY
+            index++
+        }
+        repeat(48) { i ->
+            val x = ((i * 83) % size.width.toInt().coerceAtLeast(1)).toFloat()
+            val cy = ((i * 137) % size.height.toInt().coerceAtLeast(1)).toFloat()
+            val radius = 18f + (i % 7) * 8f
+            drawCircle(
+                color = stainColor,
+                radius = radius,
+                center = androidx.compose.ui.geometry.Offset(x, cy),
+                style = Stroke(width = 0.8f)
+            )
+        }
+        repeat(90) { i ->
+            val x = ((i * 47) % size.width.toInt().coerceAtLeast(1)).toFloat()
+            val cy = ((i * 91) % size.height.toInt().coerceAtLeast(1)).toFloat()
+            drawCircle(
+                color = fiberColor,
+                radius = 0.7f + (i % 3) * 0.45f,
+                center = androidx.compose.ui.geometry.Offset(x, cy)
+            )
         }
     }
 }

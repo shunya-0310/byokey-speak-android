@@ -5,21 +5,68 @@
     id("com.google.devtools.ksp")
 }
 
+val aiReportEndpoint = providers.gradleProperty("BYOKEY_AI_REPORT_ENDPOINT")
+    .orElse(providers.environmentVariable("BYOKEY_AI_REPORT_ENDPOINT"))
+    .orElse("")
+val releaseStoreFile = providers.gradleProperty("BYOKEY_RELEASE_STORE_FILE")
+    .orElse(providers.environmentVariable("BYOKEY_RELEASE_STORE_FILE"))
+val releaseStorePassword = providers.gradleProperty("BYOKEY_RELEASE_STORE_PASSWORD")
+    .orElse(providers.environmentVariable("BYOKEY_RELEASE_STORE_PASSWORD"))
+val releaseKeyAlias = providers.gradleProperty("BYOKEY_RELEASE_KEY_ALIAS")
+    .orElse(providers.environmentVariable("BYOKEY_RELEASE_KEY_ALIAS"))
+val releaseKeyPassword = providers.gradleProperty("BYOKEY_RELEASE_KEY_PASSWORD")
+    .orElse(providers.environmentVariable("BYOKEY_RELEASE_KEY_PASSWORD"))
+val releaseSigningConfigured = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+).all { it.isPresent }
+
 android {
     namespace = "com.byokeylab.speak"
-    compileSdk = 35
+    buildToolsVersion = "36.1.0"
+    compileSdk {
+        version = release(36) {
+            minorApiLevel = 1
+        }
+    }
 
     defaultConfig {
         applicationId = "com.byokeylab.speak"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField(
+            "String",
+            "AI_REPORT_ENDPOINT",
+            "\"${aiReportEndpoint.get().replace("\\", "\\\\").replace("\"", "\\\"")}\""
+        )
+    }
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseStoreFile.get())
+                storePassword = releaseStorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseKeyPassword.get()
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -38,6 +85,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -58,6 +106,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

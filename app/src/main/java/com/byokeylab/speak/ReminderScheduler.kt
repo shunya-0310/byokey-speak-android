@@ -7,20 +7,23 @@ import android.content.Intent
 import java.util.Calendar
 
 object ReminderScheduler {
+    const val DEFAULT_NEWS_HOUR = 6
+    const val DEFAULT_NEWS_MINUTE = 30
+
     fun apply(context: Context, settings: AppSettings) {
         if (settings.dailyReminderEnabled) {
-            schedule(context, settings.reminderHour, settings.reminderMinute)
+            schedule(context)
         } else {
             cancel(context)
         }
     }
 
-    fun schedule(context: Context, hour: Int, minute: Int) {
+    fun schedule(context: Context) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pendingIntent = reminderPendingIntent(context)
         val trigger = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour.coerceIn(0, 23))
-            set(Calendar.MINUTE, minute.coerceIn(0, 59))
+            set(Calendar.HOUR_OF_DAY, DEFAULT_NEWS_HOUR)
+            set(Calendar.MINUTE, DEFAULT_NEWS_MINUTE)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) {

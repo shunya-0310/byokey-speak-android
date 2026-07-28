@@ -10,8 +10,19 @@ data class ChatMessage(
     val id: Long,
     val role: MessageRole,
     val text: String,
+    val inputSource: MessageInputSource = MessageInputSource.UNKNOWN,
+    val usedQuickAssist: Boolean = false,
     val timestampMillis: Long
 )
+
+enum class MessageInputSource {
+    NONE,
+    UNKNOWN,
+    TYPED,
+    VOICE,
+    QUICK_ASSIST,
+    MIXED
+}
 
 data class LearningNote(
     val id: Long,
@@ -110,12 +121,27 @@ enum class EnglishLevel(val label: String, val promptInstruction: String) {
 
 enum class AppTheme(val label: String) {
     Dark("ダーク"),
-    Light("ライト(羊皮紙)")
+    Light("ライト")
 }
 
 enum class VoiceGender(val label: String) {
     Female("女性"),
     Male("男性")
+}
+
+enum class ConversationAutoMode {
+    Off,
+    ManualSend,
+    FullAuto;
+
+    fun next(): ConversationAutoMode = when (this) {
+        Off -> ManualSend
+        ManualSend -> FullAuto
+        FullAuto -> Off
+    }
+
+    val startsMicAfterReading: Boolean
+        get() = this != Off
 }
 
 data class AppSettings(
@@ -128,7 +154,8 @@ data class AppSettings(
     val englishLevel: EnglishLevel = EnglishLevel.A1,
     val coachInstructions: String = AppStorage.DEFAULT_COACH_INSTRUCTIONS,
     val theme: AppTheme = AppTheme.Dark,
-    val voiceGender: VoiceGender = VoiceGender.Female
+    val voiceGender: VoiceGender = VoiceGender.Female,
+    val soundEffectsEnabled: Boolean = true
 ) {
     val isConfigured: Boolean get() = apiKey.isNotBlank()
 }
@@ -137,7 +164,23 @@ data class AppSettings(
 enum class VocabSource(val label: String) {
     Coach("Coach"),
     Chats("Chat"),
+    Manual("Manual"),
     QuickAssist("Assist")
+}
+
+enum class AppTutorialKind {
+    Chats,
+    ChatControls,
+    Vocabulary,
+    Progress,
+    Settings
+}
+
+enum class ConversationOrigin(val label: String) {
+    FREE_CHAT("Free chat"),
+    TOPIC("Topic"),
+    DAILY_NEWS("Daily News"),
+    MIGRATED_COACH("Coach history")
 }
 
 /** 単語帳カード (Review画面) */
@@ -148,6 +191,49 @@ data class VocabCard(
     val source: VocabSource,
     val favorite: Boolean,
     val timestampMillis: Long
+)
+
+data class AnalysisPoint(
+    val title: String,
+    val evidence: List<String> = emptyList(),
+    val comment: String = ""
+)
+
+data class AnalysisExample(
+    val original: String,
+    val suggestion: String,
+    val explanationJa: String
+)
+
+data class RecurringPattern(
+    val category: String,
+    val title: String,
+    val occurrences: Int,
+    val examples: List<AnalysisExample>,
+    val nextAction: String
+)
+
+data class ConversationAnalysis(
+    val summary: String,
+    val strengths: List<AnalysisPoint>,
+    val recurringPatterns: List<RecurringPattern>,
+    val improvements: List<AnalysisPoint>,
+    val nextFocus: List<String>,
+    val practicePrompts: List<String>,
+    val estimatedCefr: String = "",
+    val cefrRationale: String = "",
+    val levelUpPlan: List<String> = emptyList()
+)
+
+data class ConversationAnalysisRecord(
+    val id: Long,
+    val createdAt: Long,
+    val periodStart: Long,
+    val periodEnd: Long,
+    val userMessageCount: Int,
+    val provider: String,
+    val model: String,
+    val result: ConversationAnalysis
 )
 
 enum class TopicCategory(val label: String) {
@@ -168,10 +254,12 @@ data class AssistSuggestion(val english: String, val note: String)
 object AppLinks {
     const val SITE = "https://byokey-lab.com/speak/english/"
     const val PRIVACY_POLICY = "https://byokey-lab.com/privacy"
+    const val TERMS_OF_USE = "https://byokey-lab.com/terms/"
     const val SUPPORT = "https://byokey-lab.com/support"
     const val API_GUIDE = "https://byokey-lab.com/guide/api/"
 
     /** 料金シミュレーションつきのアプリ公式ページ */
     const val PRICING_SIMULATOR = "https://byokey-lab.com/speak/english/"
-    const val CONTACT_EMAIL = "byokey-lab@gmail.com"
+    const val CONTACT_FORM =
+        "https://docs.google.com/forms/d/e/1FAIpQLSf14ucq_SU36hxEQSsw0W5eBJ1WVp7PYjCaaEHu9GKRWyWQVw/viewform?usp=publish-editor"
 }

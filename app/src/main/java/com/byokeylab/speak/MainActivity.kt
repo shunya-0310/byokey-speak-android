@@ -3,6 +3,7 @@ package com.byokeylab.speak
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -14,15 +15,31 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -35,10 +52,12 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -49,23 +68,41 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.byokeylab.speak.ui.ChatsScreen
-import com.byokeylab.speak.ui.CoachScreen
 import com.byokeylab.speak.ui.OnboardingScreen
 import com.byokeylab.speak.ui.ProgressScreen
+import com.byokeylab.speak.data.ChatMode
 import com.byokeylab.speak.ui.ReviewScreen
 import com.byokeylab.speak.ui.SettingsScreen
+import com.byokeylab.speak.ui.SplashScreen
+import kotlinx.coroutines.delay
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val initialTopic = intent.getStringExtra(EXTRA_TOPIC)
 
         val notificationPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
@@ -76,32 +113,72 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            BYOKeySpeakApp(initialTopic = initialTopic)
+            val context = LocalContext.current
+            val soundEffects = remember(context) { AppSoundEffects(context) }
+            DisposableEffect(soundEffects) {
+                onDispose { soundEffects.release() }
+            }
+            // スプラッシュ (1秒): プロセス生成後の初回のみ表示。回転等の再生成では出さない
+            var showSplash by rememberSaveable { mutableStateOf(!splashShown) }
+            CompositionLocalProvider(LocalAppSoundEffects provides soundEffects) {
+                if (showSplash) {
+                    SplashScreen(onFinished = {
+                        splashShown = true
+                        showSplash = false
+                    })
+                } else {
+                    BYOKeySpeakApp()
+                }
+            }
         }
     }
 
     companion object {
-        const val EXTRA_TOPIC = "morning_topic"
+        /** プロセス内で一度スプラッシュを見せたかどうか */
+        private var splashShown = false
     }
 }
 
 @Composable
-private fun BYOKeySpeakApp(initialTopic: String?) {
+private fun BYOKeySpeakApp() {
     val context = LocalContext.current
     val viewModel: AppViewModel = viewModel()
+    val soundEffects = LocalAppSoundEffects.current
+    val userMessageTexts by viewModel.userMessageTexts.collectAsState()
+    var showPostOnboardingSplash by rememberSaveable { mutableStateOf(false) }
+    var finishOnboardingToSettings by rememberSaveable { mutableStateOf(false) }
+    val tutorialAnchors = remember { TutorialAnchorRegistry() }
 
-    // 通知からのトピック起動 (コーチ会話の準備完了後に一度だけ)
-    var topicConsumed by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(viewModel.coachChatId) {
-        if (!topicConsumed && !initialTopic.isNullOrBlank() && viewModel.coachChatId != null) {
-            viewModel.startTopic(initialTopic)
-            viewModel.currentTab = MainTab.Coach
-            topicConsumed = true
+    DisposableEffect(viewModel, soundEffects) {
+        viewModel.messageReceivedHook = {
+            soundEffects?.play(AppSound.MessageReceive)
+        }
+        onDispose { viewModel.messageReceivedHook = null }
+    }
+    androidx.compose.runtime.SideEffect {
+        soundEffects?.enabled = viewModel.settings.soundEffectsEnabled
+    }
+
+    LaunchedEffect(viewModel.onboardingDone, viewModel.currentTab) {
+        if (!viewModel.onboardingDone) return@LaunchedEffect
+        when (viewModel.currentTab) {
+            MainTab.Chats -> viewModel.maybeShowTutorial(AppTutorialKind.Chats)
+            MainTab.Review -> viewModel.maybeShowTutorial(AppTutorialKind.Vocabulary)
+            MainTab.Settings -> viewModel.maybeShowTutorial(AppTutorialKind.Settings)
+            MainTab.Progress -> viewModel.maybeShowProgressTutorial(userMessageTexts.size)
+        }
+    }
+
+    LaunchedEffect(viewModel.onboardingDone, userMessageTexts.size) {
+        if (viewModel.onboardingDone) {
+            delay(2_000)
+            viewModel.maybeShowProgressTutorial(userMessageTexts.size)
         }
     }
 
     // TTS (コーチ返信の読み上げ + ハンズフリー自動ループ)
     val ttsRef = remember { mutableStateOf<TextToSpeech?>(null) }
+    var speakingMessageId by rememberSaveable { mutableStateOf<Long?>(null) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val startMicRef = remember { mutableStateOf<((Long) -> Unit)?>(null) }
     DisposableEffect(Unit) {
@@ -110,17 +187,32 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
             if (status == TextToSpeech.SUCCESS) {
                 engine?.language = Locale.US
                 engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {}
+                    override fun onStart(utteranceId: String?) {
+                        val messageId = utteranceId
+                            ?.removePrefix("msg_")
+                            ?.takeIf { it != utteranceId }
+                            ?.toLongOrNull()
+                        mainHandler.post { speakingMessageId = messageId }
+                    }
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) {}
+                    override fun onError(utteranceId: String?) {
+                        mainHandler.post { speakingMessageId = null }
+                    }
                     override fun onDone(utteranceId: String?) {
+                        mainHandler.post { speakingMessageId = null }
                         // 自動モード: 読み上げが終わったらマイクを起動する
                         if (utteranceId != null && utteranceId.startsWith("auto_")) {
                             val chatId = utteranceId.removePrefix("auto_").toLongOrNull() ?: return
                             mainHandler.post {
-                                if (viewModel.autoMode) startMicRef.value?.invoke(chatId)
+                                if (viewModel.autoMode.startsMicAfterReading) {
+                                    startMicRef.value?.invoke(chatId)
+                                }
                             }
                         }
+                    }
+
+                    override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                        mainHandler.post { speakingMessageId = null }
                     }
                 })
                 ttsRef.value = engine
@@ -152,11 +244,19 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
         }
     }
 
-    val speak: (String) -> Unit = { text ->
+    val speak: (Long?, String) -> Unit = { messageId, text ->
         ttsRef.value?.let { engine ->
             applyVoiceStyle(engine)
-            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "coach_reply")
+            speakingMessageId = messageId
+            val params = Bundle().apply {
+                putString(TextToSpeech.Engine.KEY_PARAM_VOLUME, "1.0")
+            }
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, params, messageId?.let { "msg_$it" } ?: "topic")
         }
+    }
+    val pauseSpeaking: () -> Unit = {
+        ttsRef.value?.stop()
+        speakingMessageId = null
     }
 
     // コーチ返信到着時の自動読み上げ(読み上げ完了でマイク起動につながる)
@@ -164,7 +264,10 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
         viewModel.coachReplyHook = { chatId, naturalReply ->
             ttsRef.value?.let { engine ->
                 applyVoiceStyle(engine)
-                engine.speak(naturalReply, TextToSpeech.QUEUE_FLUSH, null, "auto_$chatId")
+                val params = Bundle().apply {
+                    putString(TextToSpeech.Engine.KEY_PARAM_VOLUME, "1.0")
+                }
+                engine.speak(naturalReply, TextToSpeech.QUEUE_FLUSH, params, "auto_$chatId")
             }
         }
     }
@@ -185,6 +288,13 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
                 val target = speechTargetChatId
                 if (target != null) {
                     viewModel.appendToDraft(target, spoken)
+                    if (viewModel.autoMode == ConversationAutoMode.FullAuto) {
+                        val recognizedText = viewModel.draftOf(target)
+                        viewModel.send(target, ChatMode.Quick, recognizedText) {
+                            soundEffects?.play(AppSound.MessageSend)
+                            viewModel.clearDraft(target)
+                        }
+                    }
                 } else {
                     viewModel.appendToAssistQuestion(spoken)
                 }
@@ -204,27 +314,41 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
         }
         runCatching { speechLauncher.launch(intent) }
     }
-    val startMic: (Long) -> Unit = { chatId ->
+    val startEnglishMic: (Long) -> Unit = { chatId ->
         speechTargetChatId = chatId
         launchSpeech("en-US", "Speak in English")
     }
-    startMicRef.value = startMic
+    val startJapaneseMic: (Long) -> Unit = { chatId ->
+        speechTargetChatId = chatId
+        launchSpeech("ja-JP", "日本語で話してください")
+    }
+    startMicRef.value = startEnglishMic
     val startAssistMic: () -> Unit = {
         speechTargetChatId = null
         launchSpeech("ja-JP", "日本語で話してください")
     }
 
     GrimoireTheme(darkTheme = viewModel.settings.theme == AppTheme.Dark) {
-        if (!viewModel.onboardingDone) {
+        CompositionLocalProvider(LocalTutorialAnchors provides tutorialAnchors) {
+        if (showPostOnboardingSplash) {
+            SplashScreen(onFinished = {
+                showPostOnboardingSplash = false
+                viewModel.completeOnboarding(finishOnboardingToSettings)
+            })
+        } else if (!viewModel.onboardingDone) {
             OnboardingScreen(onFinish = { goToSettings ->
-                viewModel.completeOnboarding(goToSettings)
+                finishOnboardingToSettings = goToSettings
+                showPostOnboardingSplash = true
             })
         } else {
             MainScaffold(
                 viewModel = viewModel,
-                onMic = startMic,
+                onEnglishMic = startEnglishMic,
+                onJapaneseMic = startJapaneseMic,
                 onAssistMic = startAssistMic,
-                onSpeak = speak
+                onSpeak = speak,
+                speakingMessageId = speakingMessageId,
+                onPauseSpeaking = pauseSpeaking
             )
         }
 
@@ -256,41 +380,449 @@ private fun BYOKeySpeakApp(initialTopic: String?) {
                 }
             )
         }
+
+        if (viewModel.showExternalDataConsent && viewModel.onboardingDone) {
+            AlertDialog(
+                onDismissRequest = viewModel::dismissExternalDataConsent,
+                containerColor = Grimoire.ParchmentLight,
+                title = { Text("外部AIへの送信について", color = Grimoire.BurgundyDeep) },
+                text = {
+                    Text(
+                        "会話、Quick Assist、翻訳、会話分析を使うと、入力した文章と必要な会話履歴が、設定したLLMプロバイダーへ送信されます。BYOKey Labは通常の会話やAPIキーを受け取りません。",
+                        color = Grimoire.Ink
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = viewModel::confirmExternalDataConsent,
+                        colors = ButtonDefaults.buttonColors(containerColor = Grimoire.Burgundy)
+                    ) {
+                        Text("同意して続ける")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::dismissExternalDataConsent) {
+                        Text("今は使わない", color = Grimoire.InkFaded)
+                    }
+                }
+            )
+        }
+
+        viewModel.activeTutorial?.let { tutorial ->
+            TutorialOverlay(
+                kind = tutorial,
+                onStepChanged = viewModel::updateTutorialStep,
+                onDismiss = viewModel::dismissTutorial
+            )
+        }
+        AnimatedVisibility(
+            visible = viewModel.showFeedbackPrompt,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            FeedbackPrompt(
+                onDismiss = viewModel::dismissFeedbackPrompt
+            )
+        }
+        }
     }
+}
+
+@Composable
+private fun FeedbackPrompt(
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.46f))
+            .padding(18.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 18.dp,
+                    shape = RoundedCornerShape(12.dp),
+                    ambientColor = Grimoire.Gold,
+                    spotColor = Grimoire.Gold
+                )
+                .grimoireBorder(12.dp),
+            color = Grimoire.ParchmentLight,
+            shape = RoundedCornerShape(12.dp),
+            shadowElevation = 12.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "使い心地はいかがですか？",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = Grimoire.BurgundyDeep
+                )
+                Text(
+                    text = "会話分析はProgress画面からいつでも確認できます。BYOKey Speakをより良くするため、ご意見や評価をお聞かせください。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Grimoire.Ink
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            onDismiss()
+                            openFeedbackForm(context)
+                        }
+                    ) {
+                        Text("意見を送る", color = Grimoire.GoldDark)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            openPlayStoreRating(context)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Grimoire.Burgundy)
+                    ) {
+                        Text("評価する")
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun openFeedbackForm(context: android.content.Context) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(AppLinks.CONTACT_FORM))
+    runCatching { context.startActivity(intent) }
+}
+
+private fun openPlayStoreRating(context: android.content.Context) {
+    val packageName = context.packageName.removeSuffix(".debug")
+    val marketIntent = Intent(
+        Intent.ACTION_VIEW,
+        Uri.parse("market://details?id=$packageName")
+    )
+    runCatching {
+        context.startActivity(marketIntent)
+    }.getOrElse {
+        val webIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://play.google.com/store/apps/details?id=$packageName")
+        )
+        runCatching { context.startActivity(webIntent) }
+    }
+}
+
+@Composable
+private fun TutorialOverlay(
+    kind: AppTutorialKind,
+    onStepChanged: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val content = tutorialContent(kind)
+    var stepIndex by rememberSaveable(kind) { mutableStateOf(0) }
+    val step = content.steps[stepIndex]
+    val isLastStep = stepIndex == content.steps.lastIndex
+    val anchorRegistry = LocalTutorialAnchors.current
+    val targetBounds = step.targetId?.let(anchorRegistry.bounds::get)
+    val density = LocalDensity.current
+    var calloutSize by remember { mutableStateOf(IntSize.Zero) }
+
+    LaunchedEffect(kind, stepIndex) {
+        onStepChanged(stepIndex)
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val screenHeight = constraints.maxHeight
+        val edgePadding = with(density) { 16.dp.roundToPx() }
+        val targetGap = with(density) { 14.dp.roundToPx() }
+        val calloutY = when {
+            calloutSize.height == 0 -> edgePadding
+            targetBounds == null -> ((screenHeight - calloutSize.height) / 2)
+                .coerceAtLeast(edgePadding)
+            targetBounds.bottom.roundToInt() + targetGap + calloutSize.height <=
+                screenHeight - edgePadding -> targetBounds.bottom.roundToInt() + targetGap
+            else -> (targetBounds.top.roundToInt() - targetGap - calloutSize.height)
+                .coerceAtLeast(edgePadding)
+        }
+
+        TutorialScrim(targetBounds = targetBounds)
+        targetBounds?.let {
+            TutorialTargetFrame(
+                bounds = it,
+                screenWidthPx = constraints.maxWidth,
+                screenHeightPx = constraints.maxHeight
+            )
+        }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .onSizeChanged { calloutSize = it }
+                .offset { IntOffset(0, calloutY) }
+                .shadow(
+                    elevation = 14.dp,
+                    shape = RoundedCornerShape(10.dp),
+                    ambientColor = Grimoire.Gold,
+                    spotColor = Grimoire.Gold
+                )
+                .grimoireBorder(10.dp),
+            color = Grimoire.ParchmentLight,
+            shape = RoundedCornerShape(10.dp),
+            shadowElevation = 10.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = step.target,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Grimoire.BurgundyDeep,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = step.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Grimoire.Ink
+                )
+                Text(
+                    text = "${stepIndex + 1} / ${content.steps.size}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Grimoire.InkFaded,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("閉じる", color = Grimoire.InkFaded)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (isLastStep) {
+                                onDismiss()
+                            } else {
+                                stepIndex += 1
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Grimoire.Burgundy)
+                    ) {
+                        Text(if (isLastStep) "OK" else "次へ")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TutorialScrim(targetBounds: Rect?) {
+    val density = LocalDensity.current
+    val spotlightPadding = with(density) { 8.dp.toPx() }
+    val cornerRadius = with(density) { 12.dp.toPx() }
+    Canvas(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                compositingStrategy = CompositingStrategy.Offscreen
+            }
+    ) {
+        drawRect(Color.Black.copy(alpha = 0.58f))
+        targetBounds?.let { bounds ->
+            val left = (bounds.left - spotlightPadding).coerceIn(0f, size.width)
+            val top = (bounds.top - spotlightPadding).coerceIn(0f, size.height)
+            val right = (bounds.right + spotlightPadding).coerceIn(left, size.width)
+            val bottom = (bounds.bottom + spotlightPadding).coerceIn(top, size.height)
+            drawRoundRect(
+                color = Color.Transparent,
+                topLeft = Offset(left, top),
+                size = Size(right - left, bottom - top),
+                cornerRadius = CornerRadius(cornerRadius),
+                blendMode = BlendMode.Clear
+            )
+        }
+    }
+}
+
+@Composable
+private fun TutorialTargetFrame(
+    bounds: Rect,
+    screenWidthPx: Int,
+    screenHeightPx: Int
+) {
+    val density = LocalDensity.current
+    val paddingPx = with(density) { 8.dp.toPx() }
+    val edgePx = with(density) { 3.dp.toPx() }
+    val leftPx = (bounds.left - paddingPx).coerceIn(edgePx, screenWidthPx - edgePx)
+    val topPx = (bounds.top - paddingPx).coerceIn(edgePx, screenHeightPx - edgePx)
+    val rightPx = (bounds.right + paddingPx).coerceIn(leftPx, screenWidthPx - edgePx)
+    val bottomPx = (bounds.bottom + paddingPx).coerceIn(topPx, screenHeightPx - edgePx)
+    val left = leftPx.roundToInt()
+    val top = topPx.roundToInt()
+    val width = with(density) { (rightPx - leftPx).toDp() }
+    val height = with(density) { (bottomPx - topPx).toDp() }
+    val shape = RoundedCornerShape(12.dp)
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(left, top) }
+            .width(width)
+            .height(height)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(7.dp)
+                .border(5.dp, Grimoire.Gold.copy(alpha = 0.72f), shape)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .shadow(
+                    elevation = 18.dp,
+                    shape = shape,
+                    clip = false,
+                    ambientColor = Grimoire.Gold,
+                    spotColor = Grimoire.Gold
+                )
+                .border(2.dp, Grimoire.Gold, shape)
+        )
+    }
+}
+
+private data class TutorialContent(
+    val steps: List<TutorialStep>
+)
+
+private data class TutorialStep(
+    val target: String,
+    val message: String,
+    val targetId: String? = null
+)
+
+private fun tutorialContent(kind: AppTutorialKind): TutorialContent = when (kind) {
+    AppTutorialKind.Chats -> TutorialContent(
+        steps = listOf(
+            TutorialStep(
+                "TODAY'S WORLD",
+                "毎朝世界のトップニュースが配信されます。気になる記事の Talk から、その話題でChatを立ち上げられます。",
+                TutorialTargets.CHATS_DAILY_NEWS
+            ),
+            TutorialStep(
+                "+ New Chat",
+                "ニュース以外の話題で話したいときは、新しい会話をここから始めます。",
+                TutorialTargets.CHATS_NEW_CHAT
+            )
+        )
+    )
+    AppTutorialKind.ChatControls -> TutorialContent(
+        steps = listOf(
+            TutorialStep(
+                "ヘッドフォン",
+                "タップするたびに通常、マニュアル送信、フルオートへ切り替わります。マニュアル送信では読み上げ後にマイクが起動し、フルオートでは音声入力後の送信まで自動で行います。",
+                TutorialTargets.CHAT_AUTO_MODE
+            ),
+            TutorialStep(
+                "キラキラ",
+                "Quick Assistです。言葉に詰まったとき、日本語で聞くと短い英語候補を出します。",
+                TutorialTargets.CHAT_QUICK_ASSIST
+            ),
+            TutorialStep(
+                "地球マーク",
+                "最新の話題など、検索を伴うチャットをしたいときにオンにします。",
+                TutorialTargets.CHAT_WEB_SEARCH
+            ),
+            TutorialStep(
+                "マイク",
+                "「英」は英語認識、「日」は日本語認識の音声入力です。話す言語に合わせて選べます。",
+                TutorialTargets.CHAT_MIC
+            )
+        )
+    )
+    AppTutorialKind.Vocabulary -> TutorialContent(
+        steps = listOf(
+            TutorialStep("Vocabulary List", "Chatで登場した単語やイディオムは自動で登録されます。"),
+            TutorialStep("Card color", "頻出する用語は、会話で出るほど色が濃くなっていきます。"),
+            TutorialStep("＋", "必要な単語は＋ボタンから手動でも登録できます。")
+        )
+    )
+    AppTutorialKind.Progress -> TutorialContent(
+        steps = listOf(
+            TutorialStep("Conversation Analysis", "会話の履歴が溜まりました。Progress画面から、自分の話し方の特徴や多い失敗を分析できます。"),
+            TutorialStep("Practice", "分析結果はカードで保存されます。詳細から、苦手な表現を練習する会話も始められます。")
+        )
+    )
+    AppTutorialKind.Settings -> TutorialContent(
+        steps = listOf(
+            TutorialStep(
+                "API Key",
+                "ここにAPIキーを入力し、利用するモデルを選びます。変更後は画面下の「設定を保存」を押してください。",
+                TutorialTargets.SETTINGS_API_KEY
+            ),
+            TutorialStep(
+                "ヘルプ",
+                "APIキーの取得方法がわからない場合は、ここをタップして設定ガイドを確認できます。",
+                TutorialTargets.SETTINGS_HELP
+            ),
+            TutorialStep(
+                "レベル、コーチ設定",
+                "会話レベルやコーチの話し方は「レベル、コーチ設定」で変更できます。次へ進むと、この画面へ切り替わります。",
+                TutorialTargets.SETTINGS_COACH
+            ),
+            TutorialStep(
+                "CEFRレベル",
+                "CEFRレベルを選ぶと、会話の語彙・文法・返答の難しさを調整できます。",
+                TutorialTargets.SETTINGS_CEFR
+            ),
+            TutorialStep(
+                "Coach Personalities & Skills",
+                "性格、話し方、添削方法、解説の詳しさなどを自由に指定できます。",
+                TutorialTargets.SETTINGS_COACH_SKILL
+            )
+        )
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainScaffold(
     viewModel: AppViewModel,
-    onMic: (Long) -> Unit,
+    onEnglishMic: (Long) -> Unit,
+    onJapaneseMic: (Long) -> Unit,
     onAssistMic: () -> Unit,
-    onSpeak: (String) -> Unit
+    onSpeak: (Long?, String) -> Unit,
+    speakingMessageId: Long?,
+    onPauseSpeaking: () -> Unit
 ) {
-    val stats by viewModel.dailyStats.collectAsState()
-    val streak = viewModel.streakOf(stats)
+    val density = LocalDensity.current
+    val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
+    val soundEffects = LocalAppSoundEffects.current
 
     Scaffold(
         topBar = {
             Column {
                 CenterAlignedTopAppBar(
                     title = {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "BYOKey Speak",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = Grimoire.BurgundyDeep,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (streak > 0) {
-                                Text(
-                                    text = "✦ 連続 $streak 日目の修行 ✦",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Grimoire.Gold
-                                )
-                            }
-                        }
+                        Text(
+                            text = "BYOKey Speak",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Grimoire.BurgundyDeep,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = Color.Transparent
@@ -300,26 +832,34 @@ private fun MainScaffold(
             }
         },
         bottomBar = {
-            NavigationBar(containerColor = Grimoire.ParchmentDeep) {
-                MainTab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = viewModel.currentTab == tab,
-                        onClick = { viewModel.currentTab = tab },
-                        icon = {
-                            Icon(
-                                imageVector = tab.icon(),
-                                contentDescription = tab.label
+            if (!isKeyboardVisible) {
+                NavigationBar(containerColor = Grimoire.ParchmentDeep) {
+                    MainTab.entries.forEach { tab ->
+                        NavigationBarItem(
+                            selected = viewModel.currentTab == tab,
+                            onClick = {
+                                if (viewModel.currentTab != tab) {
+                                    soundEffects?.play(AppSound.Pages)
+                                    viewModel.currentTab = tab
+                                }
+                                if (tab == MainTab.Chats) viewModel.openQuickChat(null)
+                            },
+                            icon = {
+                                Icon(
+                                    imageVector = tab.icon(),
+                                    contentDescription = tab.label
+                                )
+                            },
+                            label = { Text(tab.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Grimoire.Burgundy,
+                                selectedTextColor = Grimoire.Burgundy,
+                                unselectedIconColor = Grimoire.InkFaded,
+                                unselectedTextColor = Grimoire.InkFaded,
+                                indicatorColor = Grimoire.Gold.copy(alpha = 0.35f)
                             )
-                        },
-                        label = { Text(tab.label) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Grimoire.Burgundy,
-                            selectedTextColor = Grimoire.Burgundy,
-                            unselectedIconColor = Grimoire.InkFaded,
-                            unselectedTextColor = Grimoire.InkFaded,
-                            indicatorColor = Grimoire.Gold.copy(alpha = 0.35f)
                         )
-                    )
+                    }
                 }
             }
         },
@@ -331,18 +871,14 @@ private fun MainScaffold(
                 .fillMaxSize()
         ) {
             when (viewModel.currentTab) {
-                MainTab.Coach -> CoachScreen(
-                    viewModel = viewModel,
-                    onMic = onMic,
-                    onAssistMic = onAssistMic,
-                    onSpeak = onSpeak,
-                    modifier = Modifier.fillMaxSize()
-                )
                 MainTab.Chats -> ChatsScreen(
                     viewModel = viewModel,
-                    onMic = onMic,
+                    onEnglishMic = onEnglishMic,
+                    onJapaneseMic = onJapaneseMic,
                     onAssistMic = onAssistMic,
                     onSpeak = onSpeak,
+                    speakingMessageId = speakingMessageId,
+                    onPauseSpeaking = onPauseSpeaking,
                     modifier = Modifier.fillMaxSize()
                 )
                 MainTab.Review -> ReviewScreen(
@@ -363,7 +899,6 @@ private fun MainScaffold(
 }
 
 private fun MainTab.icon(): ImageVector = when (this) {
-    MainTab.Coach -> Icons.Default.School
     MainTab.Chats -> Icons.Default.ChatBubbleOutline
     MainTab.Review -> Icons.AutoMirrored.Filled.MenuBook
     MainTab.Progress -> Icons.Default.Insights

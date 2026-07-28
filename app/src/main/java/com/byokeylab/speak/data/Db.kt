@@ -8,6 +8,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.Insert
+import androidx.room.ColumnInfo
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
@@ -20,8 +21,10 @@ import kotlinx.coroutines.flow.Flow
 data class ChatEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
-    /** ChatMode.name: Coach or Quick */
+    /** ChatMode.name. Existing Coach rows are migrated to Quick from DB v3. */
     val mode: String,
+    /** ConversationOrigin.name */
+    @ColumnInfo(defaultValue = "FREE_CHAT") val origin: String = "FREE_CHAT",
     val pinned: Boolean = false,
     val createdAt: Long,
     val updatedAt: Long
@@ -45,7 +48,22 @@ data class MessageEntity(
     /** MessageRole.name */
     val role: String,
     val text: String,
+    /** MessageInputSource.name */
+    @ColumnInfo(defaultValue = "UNKNOWN") val inputSource: String = "UNKNOWN",
+    @ColumnInfo(defaultValue = "0") val usedQuickAssist: Boolean = false,
     val createdAt: Long
+)
+
+@Entity(tableName = "conversation_analyses")
+data class ConversationAnalysisEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val createdAt: Long,
+    val periodStart: Long,
+    val periodEnd: Long,
+    val userMessageCount: Int,
+    val provider: String,
+    val model: String,
+    val resultJson: String
 )
 
 @Entity(tableName = "learning_notes")
@@ -93,6 +111,9 @@ data class ChatWithPreview(
 
 @Dao
 interface ChatDao {
+    @Query("SELECT * FROM chats ORDER BY id ASC")
+    suspend fun allForBackup(): List<ChatEntity>
+
     @Query(
         """
         SELECT c.id, c.title, c.mode, c.pinned, c.updatedAt,
@@ -104,6 +125,16 @@ interface ChatDao {
     )
     fun observeChats(mode: String): Flow<List<ChatWithPreview>>
 
+    @Query(
+        """
+        SELECT c.id, c.title, c.mode, c.pinned, c.updatedAt,
+               (SELECT m.text FROM messages m WHERE m.chatId = c.id ORDER BY m.id DESC LIMIT 1) AS lastMessage
+        FROM chats c
+        ORDER BY c.pinned DESC, c.updatedAt DESC
+        """
+    )
+    fun observeAllChats(): Flow<List<ChatWithPreview>>
+
     @Query("SELECT * FROM chats WHERE id = :id")
     suspend fun chatById(id: Long): ChatEntity?
 
@@ -112,6 +143,9 @@ interface ChatDao {
 
     @Insert
     suspend fun insert(chat: ChatEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun restoreAll(chats: List<ChatEntity>)
 
     @Query("UPDATE chats SET title = :title WHERE id = :id")
     suspend fun rename(id: Long, title: String)
@@ -134,17 +168,32 @@ interface ChatDao {
 
 @Dao
 interface MessageDao {
+    @Query("SELECT * FROM messages ORDER BY id ASC")
+    suspend fun allForBackup(): List<MessageEntity>
+
     @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY id ASC")
     fun observeMessages(chatId: Long): Flow<List<MessageEntity>>
 
+    @Query("SELECT text FROM messages WHERE role = 'User' ORDER BY id ASC")
+    fun observeAllUserMessageTexts(): Flow<List<String>>
+
     @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY id ASC")
     suspend fun messagesOf(chatId: Long): List<MessageEntity>
+
+    @Query("SELECT * FROM messages WHERE createdAt >= :createdAt ORDER BY createdAt ASC, id ASC")
+    suspend fun messagesSince(createdAt: Long): List<MessageEntity>
+
+    @Query("SELECT * FROM messages WHERE role = 'User' ORDER BY createdAt DESC, id DESC LIMIT 1")
+    suspend fun latestUserMessage(): MessageEntity?
 
     @Query("SELECT COUNT(*) FROM messages WHERE chatId = :chatId AND role = 'User'")
     suspend fun userMessageCount(chatId: Long): Int
 
     @Insert
     suspend fun insert(message: MessageEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun restoreAll(messages: List<MessageEntity>)
 
     @Query("DELETE FROM messages WHERE chatId = :chatId")
     suspend fun deleteByChat(chatId: Long)
@@ -155,6 +204,9 @@ interface MessageDao {
 
 @Dao
 interface LearningNoteDao {
+    @Query("SELECT * FROM learning_notes ORDER BY id ASC")
+    suspend fun allForBackup(): List<LearningNoteEntity>
+
     @Query("SELECT * FROM learning_notes ORDER BY id DESC")
     fun observeNotes(): Flow<List<LearningNoteEntity>>
 
@@ -166,6 +218,9 @@ interface LearningNoteDao {
 
     @Insert
     suspend fun insert(note: LearningNoteEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun restoreAll(notes: List<LearningNoteEntity>)
 
     @Query("UPDATE learning_notes SET reviewed = :reviewed WHERE id = :id")
     suspend fun setReviewed(id: Long, reviewed: Boolean)
@@ -179,11 +234,17 @@ interface LearningNoteDao {
 
 @Dao
 interface VocabCardDao {
+    @Query("SELECT * FROM vocab_cards ORDER BY id ASC")
+    suspend fun allForBackup(): List<VocabCardEntity>
+
     @Query("SELECT * FROM vocab_cards ORDER BY id DESC")
     fun observeAll(): Flow<List<VocabCardEntity>>
 
     @Insert
     suspend fun insert(card: VocabCardEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun restoreAll(cards: List<VocabCardEntity>)
 
     @Query("UPDATE vocab_cards SET favorite = :favorite WHERE id = :id")
     suspend fun setFavorite(id: Long, favorite: Boolean)
@@ -197,6 +258,9 @@ interface VocabCardDao {
 
 @Dao
 interface DailyStatDao {
+    @Query("SELECT * FROM daily_stats ORDER BY epochDay ASC")
+    suspend fun allForBackup(): List<DailyStatEntity>
+
     @Query("SELECT * FROM daily_stats ORDER BY epochDay DESC")
     fun observeAll(): Flow<List<DailyStatEntity>>
 
@@ -206,7 +270,31 @@ interface DailyStatDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(stat: DailyStatEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun restoreAll(stats: List<DailyStatEntity>)
+
     @Query("DELETE FROM daily_stats")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface ConversationAnalysisDao {
+    @Query("SELECT * FROM conversation_analyses ORDER BY id ASC")
+    suspend fun allForBackup(): List<ConversationAnalysisEntity>
+
+    @Query("SELECT * FROM conversation_analyses ORDER BY createdAt DESC")
+    fun observeAll(): Flow<List<ConversationAnalysisEntity>>
+
+    @Query("SELECT * FROM conversation_analyses ORDER BY createdAt DESC LIMIT 1")
+    suspend fun latest(): ConversationAnalysisEntity?
+
+    @Insert
+    suspend fun insert(analysis: ConversationAnalysisEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun restoreAll(analyses: List<ConversationAnalysisEntity>)
+
+    @Query("DELETE FROM conversation_analyses")
     suspend fun deleteAll()
 }
 
@@ -216,9 +304,10 @@ interface DailyStatDao {
         MessageEntity::class,
         LearningNoteEntity::class,
         VocabCardEntity::class,
-        DailyStatEntity::class
+        DailyStatEntity::class,
+        ConversationAnalysisEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -227,6 +316,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun learningNoteDao(): LearningNoteDao
     abstract fun vocabCardDao(): VocabCardDao
     abstract fun dailyStatDao(): DailyStatDao
+    abstract fun conversationAnalysisDao(): ConversationAnalysisDao
 
     companion object {
         @Volatile
@@ -247,6 +337,27 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `chats` ADD COLUMN `origin` TEXT NOT NULL DEFAULT 'FREE_CHAT'")
+                db.execSQL("UPDATE `chats` SET `origin` = 'MIGRATED_COACH', `mode` = 'Quick' WHERE `mode` = 'Coach'")
+                db.execSQL("ALTER TABLE `messages` ADD COLUMN `inputSource` TEXT NOT NULL DEFAULT 'UNKNOWN'")
+                db.execSQL("ALTER TABLE `messages` ADD COLUMN `usedQuickAssist` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE `messages` SET `inputSource` = 'NONE' WHERE `role` != 'User'")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `conversation_analyses` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "`periodStart` INTEGER NOT NULL, " +
+                        "`periodEnd` INTEGER NOT NULL, " +
+                        "`userMessageCount` INTEGER NOT NULL, " +
+                        "`provider` TEXT NOT NULL, " +
+                        "`model` TEXT NOT NULL, " +
+                        "`resultJson` TEXT NOT NULL)"
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -254,7 +365,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "byokey_speak.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }

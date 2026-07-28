@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,9 +21,11 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -42,7 +45,10 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.byokeylab.speak.AppViewModel
+import com.byokeylab.speak.AppSound
+import com.byokeylab.speak.CoachTranslationUiState
 import com.byokeylab.speak.Grimoire
+import com.byokeylab.speak.LocalAppSoundEffects
 import com.byokeylab.speak.TopicCategory
 import com.byokeylab.speak.TopicRepository
 import com.byokeylab.speak.data.ChatMode
@@ -55,9 +61,12 @@ import com.byokeylab.speak.grimoireBorder
 @Composable
 fun CoachScreen(
     viewModel: AppViewModel,
-    onMic: (Long) -> Unit,
+    onEnglishMic: (Long) -> Unit,
+    onJapaneseMic: (Long) -> Unit,
     onAssistMic: () -> Unit,
-    onSpeak: (String) -> Unit,
+    onSpeak: (Long?, String) -> Unit,
+    speakingMessageId: Long?,
+    onPauseSpeaking: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val chatId = viewModel.coachChatId ?: return
@@ -65,6 +74,7 @@ fun CoachScreen(
     var topicPanelVisible by rememberSaveable { mutableStateOf(false) }
     var selectedCategory by rememberSaveable { mutableStateOf(TopicCategory.DailyLife) }
     var suggestedTopic by rememberSaveable { mutableStateOf(TopicRepository.topicForToday()) }
+    val topicTranslation = viewModel.topicTranslationOf(suggestedTopic)
 
     if (showHistory) {
         CoachHistoryList(
@@ -83,16 +93,21 @@ fun CoachScreen(
         chatId = chatId,
         mode = ChatMode.Coach,
         viewModel = viewModel,
-        onMic = onMic,
+        onEnglishMic = onEnglishMic,
+        onJapaneseMic = onJapaneseMic,
         onAssistMic = onAssistMic,
         onSpeak = onSpeak,
+        speakingMessageId = speakingMessageId,
+        onPauseSpeaking = onPauseSpeaking,
         modifier = modifier,
         emptyHint = "そのまま話しかけてOK。英語でも日本語でも、コーチが会話を続けます。",
         header = {
             if (topicPanelVisible) {
                 TopicPanel(
                     topic = suggestedTopic,
-                    onSpeakTopic = { onSpeak(suggestedTopic) },
+                    translation = topicTranslation,
+                    onSpeakTopic = { onSpeak(null, suggestedTopic) },
+                    onToggleTranslation = { viewModel.toggleTopicTranslation(suggestedTopic) },
                     selectedCategory = selectedCategory,
                     onCategoryChange = { category ->
                         selectedCategory = category
@@ -246,15 +261,18 @@ private fun CoachHistoryList(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TopicPanel(
+fun TopicPanel(
     topic: String,
+    translation: CoachTranslationUiState,
     onSpeakTopic: () -> Unit,
+    onToggleTranslation: () -> Unit,
     selectedCategory: TopicCategory,
     onCategoryChange: (TopicCategory) -> Unit,
     onRefreshTopic: () -> Unit,
     onStartTopic: () -> Unit,
     onCloseTopic: () -> Unit
 ) {
+    val soundEffects = LocalAppSoundEffects.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -291,12 +309,58 @@ private fun TopicPanel(
                         color = Grimoire.Ink,
                         modifier = Modifier.weight(1f)
                     )
+                    IconButton(onClick = {
+                        soundEffects?.play(AppSound.Select)
+                        onToggleTranslation()
+                    }) {
+                        Icon(
+                            Icons.Default.Translate,
+                            contentDescription = "トピックの日本語訳を表示",
+                            tint = if (translation.visible) Grimoire.Burgundy else Grimoire.GoldDark
+                        )
+                    }
                     IconButton(onClick = onSpeakTopic) {
                         Icon(
                             Icons.AutoMirrored.Filled.VolumeUp,
                             contentDescription = "Listen to topic",
                             tint = Grimoire.GoldDark
                         )
+                    }
+                }
+                if (translation.visible) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    when {
+                        translation.loading -> {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = Grimoire.Gold,
+                                    strokeWidth = 2.dp
+                                )
+                                Text(
+                                    text = "翻訳しています...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Grimoire.InkFaded
+                                )
+                            }
+                        }
+                        translation.error != null -> {
+                            Text(
+                                text = translation.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Grimoire.Burgundy
+                            )
+                        }
+                        else -> {
+                            Text(
+                                text = translation.text,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Grimoire.Ink
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
@@ -318,7 +382,12 @@ private fun TopicPanel(
                         TopicCategory.entries.forEach { category ->
                             FilterChip(
                                 selected = selectedCategory == category,
-                                onClick = { onCategoryChange(category) },
+                                onClick = {
+                                    if (selectedCategory != category) {
+                                        soundEffects?.play(AppSound.Select)
+                                        onCategoryChange(category)
+                                    }
+                                },
                                 label = { Text(category.label) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = Grimoire.Burgundy,

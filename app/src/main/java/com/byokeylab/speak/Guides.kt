@@ -13,15 +13,34 @@ object Guides {
     data class Guide(
         val title: String,
         /** nullなら準備中 */
-        val assetPath: String?
+        val assetPath: String?,
+        val platformLabel: String? = null,
+        val platformUrl: String? = null
     )
 
     val all = listOf(
         Guide("BYOKアプリの仕組み(図解)", "guides/byok_overview.pdf"),
-        Guide("APIキー設定ガイド(Gemini)", "guides/api_guide_gemini.pdf"),
-        Guide("APIキー設定ガイド(GPT)", "guides/api_guide_gpt.pdf"),
-        Guide("APIキー設定ガイド(Claude) ※作成中", null)
+        Guide(
+            "APIキー設定ガイド(Gemini)",
+            "guides/api_guide_gemini.pdf",
+            "Google AI Studio",
+            "https://aistudio.google.com/app/apikey"
+        ),
+        Guide(
+            "APIキー設定ガイド(GPT)",
+            "guides/api_guide_gpt.pdf",
+            "OpenAI Platform",
+            "https://platform.openai.com/api-keys"
+        ),
+        Guide(
+            "APIキー設定ガイド(Claude)",
+            "guides/api_guide_claude.pdf",
+            "Claude Console",
+            "https://console.anthropic.com/settings/keys"
+        )
     )
+
+    val apiKeyGuides: List<Guide> = all.drop(1)
 
     /** assetsのPDFをキャッシュへコピーし、端末のPDFビューアで開く。 */
     fun open(context: Context, assetPath: String) {
@@ -39,9 +58,14 @@ object Guides {
             )
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/pdf")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                addCategory(Intent.CATEGORY_DEFAULT)
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_NO_HISTORY
+                )
             }
-            context.startActivity(Intent.createChooser(intent, null))
+            context.startActivity(intent)
         }
     }
 }

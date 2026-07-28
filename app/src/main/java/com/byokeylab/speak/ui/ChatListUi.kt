@@ -34,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.byokeylab.speak.Grimoire
+import com.byokeylab.speak.AppSound
+import com.byokeylab.speak.LocalAppSoundEffects
 import com.byokeylab.speak.data.ChatWithPreview
 import com.byokeylab.speak.grimoireBorder
 import java.text.SimpleDateFormat
@@ -49,13 +51,17 @@ internal fun ChatListItem(
     onRename: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val soundEffects = LocalAppSoundEffects.current
     var menuOpen by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .grimoireBorder(10.dp)
-            .clickable(onClick = onOpen),
+            .clickable {
+                soundEffects?.play(AppSound.Select)
+                onOpen()
+            },
         colors = CardDefaults.cardColors(containerColor = Grimoire.ParchmentLight),
         shape = RoundedCornerShape(10.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -104,6 +110,7 @@ internal fun ChatListItem(
                         text = { Text(if (chat.pinned) "ピン留めを外す" else "ピン留め") },
                         onClick = {
                             menuOpen = false
+                            soundEffects?.play(AppSound.Select)
                             onPinToggle()
                         }
                     )

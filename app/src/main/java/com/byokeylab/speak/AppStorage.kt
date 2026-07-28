@@ -20,8 +20,8 @@ class AppStorage(context: Context) {
             apiKey = secureApiKeyStore.load(),
             model = prefs.getString(KEY_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL,
             dailyReminderEnabled = prefs.getBoolean(KEY_REMINDER_ENABLED, true),
-            reminderHour = prefs.getInt(KEY_REMINDER_HOUR, 7),
-            reminderMinute = prefs.getInt(KEY_REMINDER_MINUTE, 15),
+            reminderHour = prefs.getInt(KEY_REMINDER_HOUR, ReminderScheduler.DEFAULT_NEWS_HOUR),
+            reminderMinute = prefs.getInt(KEY_REMINDER_MINUTE, ReminderScheduler.DEFAULT_NEWS_MINUTE),
             englishLevel = runCatching {
                 EnglishLevel.valueOf(prefs.getString(KEY_LEVEL, EnglishLevel.A1.name) ?: EnglishLevel.A1.name)
             }.getOrDefault(EnglishLevel.A1),
@@ -35,7 +35,8 @@ class AppStorage(context: Context) {
             }.getOrDefault(AppTheme.Dark),
             voiceGender = runCatching {
                 VoiceGender.valueOf(prefs.getString(KEY_VOICE, VoiceGender.Female.name) ?: VoiceGender.Female.name)
-            }.getOrDefault(VoiceGender.Female)
+            }.getOrDefault(VoiceGender.Female),
+            soundEffectsEnabled = prefs.getBoolean(KEY_SOUND_EFFECTS_ENABLED, true)
         )
     }
 
@@ -50,17 +51,63 @@ class AppStorage(context: Context) {
             .putString(KEY_PROVIDER, settings.provider.name)
             .putString(KEY_MODEL, settings.model.trim().ifBlank { settings.provider.defaultModel })
             .putBoolean(KEY_REMINDER_ENABLED, settings.dailyReminderEnabled)
-            .putInt(KEY_REMINDER_HOUR, settings.reminderHour.coerceIn(0, 23))
-            .putInt(KEY_REMINDER_MINUTE, settings.reminderMinute.coerceIn(0, 59))
+            .putInt(KEY_REMINDER_HOUR, ReminderScheduler.DEFAULT_NEWS_HOUR)
+            .putInt(KEY_REMINDER_MINUTE, ReminderScheduler.DEFAULT_NEWS_MINUTE)
             .putString(KEY_LEVEL, settings.englishLevel.name)
             .putString(KEY_COACH_INSTRUCTIONS, settings.coachInstructions.trim().ifBlank { DEFAULT_COACH_INSTRUCTIONS })
             .putString(KEY_THEME, settings.theme.name)
             .putString(KEY_VOICE, settings.voiceGender.name)
+            .putBoolean(KEY_SOUND_EFFECTS_ENABLED, settings.soundEffectsEnabled)
             .apply()
     }
 
     fun deleteApiKey() {
         secureApiKeyStore.clear()
+    }
+
+    fun exportPortableSettings(): PortableSettings {
+        val current = loadSettings()
+        return PortableSettings(
+            provider = current.provider.name,
+            model = current.model,
+            dailyReminderEnabled = current.dailyReminderEnabled,
+            reminderHour = ReminderScheduler.DEFAULT_NEWS_HOUR,
+            reminderMinute = ReminderScheduler.DEFAULT_NEWS_MINUTE,
+            englishLevel = current.englishLevel.name,
+            coachInstructions = current.coachInstructions,
+            theme = current.theme.name,
+            voiceGender = current.voiceGender.name,
+            soundEffectsEnabled = current.soundEffectsEnabled
+        )
+    }
+
+    fun validatePortableSettings(restored: PortableSettings): AppSettings {
+        val currentApiKey = secureApiKeyStore.load()
+        val provider = runCatching { LlmProvider.valueOf(restored.provider) }
+            .getOrElse { throw IllegalArgumentException("LLMプロバイダー設定が不正です。") }
+        val level = runCatching { EnglishLevel.valueOf(restored.englishLevel) }
+            .getOrElse { throw IllegalArgumentException("CEFR設定が不正です。") }
+        val theme = runCatching { AppTheme.valueOf(restored.theme) }
+            .getOrElse { throw IllegalArgumentException("テーマ設定が不正です。") }
+        val voice = runCatching { VoiceGender.valueOf(restored.voiceGender) }
+            .getOrElse { throw IllegalArgumentException("音声設定が不正です。") }
+        require(restored.reminderHour in 0..23 && restored.reminderMinute in 0..59) {
+            "通知時刻の設定が不正です。"
+        }
+        return AppSettings(
+            provider = provider,
+            apiKey = currentApiKey,
+            model = restored.model.trim().ifBlank { provider.defaultModel },
+            dailyReminderEnabled = restored.dailyReminderEnabled,
+            reminderHour = ReminderScheduler.DEFAULT_NEWS_HOUR,
+            reminderMinute = ReminderScheduler.DEFAULT_NEWS_MINUTE,
+            englishLevel = level,
+            coachInstructions = restored.coachInstructions.trim()
+                .ifBlank { DEFAULT_COACH_INSTRUCTIONS },
+            theme = theme,
+            voiceGender = voice,
+            soundEffectsEnabled = restored.soundEffectsEnabled
+        )
     }
 
     // --- Onboarding / ナビゲーション状態 ---
@@ -76,6 +123,50 @@ class AppStorage(context: Context) {
     var legacyImported: Boolean
         get() = prefs.getBoolean(KEY_LEGACY_IMPORTED, false)
         set(value) = prefs.edit().putBoolean(KEY_LEGACY_IMPORTED, value).apply()
+
+    var analysisConsentDone: Boolean
+        get() = prefs.getBoolean(KEY_ANALYSIS_CONSENT_DONE, false)
+        set(value) = prefs.edit().putBoolean(KEY_ANALYSIS_CONSENT_DONE, value).apply()
+
+    var feedbackPromptShown: Boolean
+        get() = prefs.getBoolean(KEY_FEEDBACK_PROMPT_SHOWN, false)
+        set(value) = prefs.edit().putBoolean(KEY_FEEDBACK_PROMPT_SHOWN, value).apply()
+
+    val hasCurrentExternalDataConsent: Boolean
+        get() = prefs.getInt(KEY_EXTERNAL_DATA_CONSENT_VERSION, 0) >= EXTERNAL_DATA_CONSENT_VERSION
+
+    fun recordExternalDataConsent() {
+        prefs.edit()
+            .putInt(KEY_EXTERNAL_DATA_CONSENT_VERSION, EXTERNAL_DATA_CONSENT_VERSION)
+            .putLong(KEY_EXTERNAL_DATA_CONSENT_AT, System.currentTimeMillis())
+            .apply()
+    }
+
+    fun isTutorialSeen(kind: AppTutorialKind): Boolean {
+        return prefs.getBoolean(tutorialKey(kind), false)
+    }
+
+    fun markTutorialSeen(kind: AppTutorialKind) {
+        prefs.edit().putBoolean(tutorialKey(kind), true).apply()
+    }
+
+    fun resetTutorials() {
+        prefs.edit()
+            .remove(KEY_TUTORIAL_CHATS_SEEN)
+            .remove(KEY_TUTORIAL_CHAT_CONTROLS_SEEN)
+            .remove(KEY_TUTORIAL_VOCABULARY_SEEN)
+            .remove(KEY_TUTORIAL_PROGRESS_SEEN)
+            .remove(KEY_TUTORIAL_SETTINGS_SEEN)
+            .apply()
+    }
+
+    private fun tutorialKey(kind: AppTutorialKind): String = when (kind) {
+        AppTutorialKind.Chats -> KEY_TUTORIAL_CHATS_SEEN
+        AppTutorialKind.ChatControls -> KEY_TUTORIAL_CHAT_CONTROLS_SEEN
+        AppTutorialKind.Vocabulary -> KEY_TUTORIAL_VOCABULARY_SEEN
+        AppTutorialKind.Progress -> KEY_TUTORIAL_PROGRESS_SEEN
+        AppTutorialKind.Settings -> KEY_TUTORIAL_SETTINGS_SEEN
+    }
 
     // --- 旧バージョンデータ(移行専用) ---
 
@@ -176,8 +267,19 @@ class AppStorage(context: Context) {
         private const val KEY_LAST_STUDY_DAY = "last_study_day"
         private const val KEY_THEME = "app_theme"
         private const val KEY_VOICE = "voice_gender"
+        private const val KEY_SOUND_EFFECTS_ENABLED = "sound_effects_enabled"
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         private const val KEY_LAST_QUICK_CHAT = "last_quick_chat_id"
         private const val KEY_LEGACY_IMPORTED = "legacy_imported"
+        private const val KEY_ANALYSIS_CONSENT_DONE = "analysis_consent_done"
+        private const val KEY_FEEDBACK_PROMPT_SHOWN = "analysis_feedback_prompt_shown"
+        private const val KEY_EXTERNAL_DATA_CONSENT_VERSION = "external_data_consent_version"
+        private const val KEY_EXTERNAL_DATA_CONSENT_AT = "external_data_consent_at"
+        private const val EXTERNAL_DATA_CONSENT_VERSION = 1
+        private const val KEY_TUTORIAL_CHATS_SEEN = "tutorial_chats_seen"
+        private const val KEY_TUTORIAL_CHAT_CONTROLS_SEEN = "tutorial_chat_controls_seen"
+        private const val KEY_TUTORIAL_VOCABULARY_SEEN = "tutorial_vocabulary_seen"
+        private const val KEY_TUTORIAL_PROGRESS_SEEN = "tutorial_progress_seen"
+        private const val KEY_TUTORIAL_SETTINGS_SEEN = "tutorial_settings_seen"
     }
 }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ のシステムスプラッシュ (起動直後にOSが表示するアイコン画面) を
+         白背景 + アイコン非表示にして、アプリのスプラッシュへシームレスに繋ぐ -->
+    <style name="Theme.EnglishCoach" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">serif</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">#EBDCB6</item>
+        <item name="android:statusBarColor">#EBDCB6</item>
+        <item name="android:windowSplashScreenBackground">#FEFEFE</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+    </style>
+</resources>
