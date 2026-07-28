@@ -47,4 +47,17 @@ class ConversationPromptTest {
         assertTrue(prompt.contains("self-harm"))
         assertTrue(prompt.contains("API keys"))
     }
+
+    @Test
+    fun betterOptionsAreRestrictedToLatestLearnerMessage() {
+        val prompt = PromptBuilder.buildConversationPrompt(
+            messages = emptyList(),
+            latestUserMessage = "I didn't hear that news.",
+            level = EnglishLevel.A2
+        )
+
+        assertTrue(prompt.contains("the learner's exact latest message only"))
+        assertTrue(prompt.contains("not your Natural reply"))
+        assertTrue(prompt.contains("Better options: None"))
+    }
 }
