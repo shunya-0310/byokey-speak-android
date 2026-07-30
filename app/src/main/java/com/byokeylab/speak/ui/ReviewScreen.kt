@@ -55,7 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -453,9 +453,7 @@ private fun VocabCardItem(
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val colorStep = (usageCount / 2).coerceIn(0, 9)
-    val colorStrength = colorStep / 9f * 0.42f
-    val cardColor = lerp(Grimoire.ParchmentLight, Grimoire.Burgundy, colorStrength)
+    val cardColor = vocabUsageCardColor(usageCount)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -532,6 +530,26 @@ private fun VocabCardItem(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun vocabUsageCardColor(usageCount: Int): Color {
+    if (!Grimoire.isDark) {
+        return when {
+            usageCount >= 15 -> Color(0xFFA65E58)
+            usageCount >= 9 -> Color(0xFFC98E73)
+            usageCount >= 5 -> Color(0xFFD9BA88)
+            usageCount >= 2 -> Color(0xFFEBDCB6)
+            else -> Color(0xFFF8EFDA)
+        }
+    }
+    return when {
+        usageCount >= 15 -> Color(0xFFD08A76)
+        usageCount >= 9 -> Color(0xFF8D5E58)
+        usageCount >= 5 -> Color(0xFF4E4551)
+        usageCount >= 2 -> Color(0xFF263A52)
+        else -> Color(0xFF1A2840)
     }
 }
 

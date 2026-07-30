@@ -2,6 +2,7 @@ package com.byokeylab.speak
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.SoundPool
 import androidx.compose.runtime.staticCompositionLocalOf
 import java.util.concurrent.ConcurrentHashMap
@@ -16,6 +17,7 @@ enum class AppSound {
 
 class AppSoundEffects(context: Context) {
     var enabled: Boolean = true
+    private val audioManager = context.applicationContext.getSystemService(AudioManager::class.java)
 
     private val soundPool = SoundPool.Builder()
         .setMaxStreams(4)
@@ -46,12 +48,14 @@ class AppSoundEffects(context: Context) {
 
     fun play(sound: AppSound) {
         if (!enabled) return
+        if (audioManager.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
+        if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) return
         val soundId = soundIds[sound] ?: return
         if (soundId !in loaded) return
         val volume = when (sound) {
             AppSound.Decision -> 0.58f
             AppSound.Select -> 0.62f
-            AppSound.Pages -> 0.95f
+            AppSound.Pages -> 0.98f
             AppSound.MessageSend -> 0.52f
             AppSound.MessageReceive -> 0.52f
         }

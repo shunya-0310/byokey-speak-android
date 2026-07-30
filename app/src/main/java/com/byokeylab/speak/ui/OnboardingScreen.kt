@@ -92,7 +92,7 @@ private val pages = listOf(
             OnboardingSection("アプリ代金", "月額料金はありません。アプリ本体は買い切りです。", accent = true),
             OnboardingSection("API利用料", "本アプリはAPIという機能を使ってAIと会話する仕組みです。会話の量に応じて「API利用料」という形で費用が発生します。"),
             OnboardingSection("APIとは？", "APIは、本アプリとAIサービスをつなぐ窓口です。入力した内容をAIへ送り、その返答をアプリで受け取るために使います。"),
-            OnboardingSection("目安", "推奨モデルのGemini 3.1 Flash-Liteなら、毎日50往復会話しても月間で数百円程度です。1日10往復なら月数十円程度です。")
+            OnboardingSection("目安", "推奨モデルのGemini 3.1 Flash-Liteでも、普通に使うと月数百円程度になることがあります。会話が多い月は1,000円前後以上になる可能性もあります。")
         ),
         backgroundImage = R.drawable.onboarding_bg_1
     ),
@@ -114,7 +114,7 @@ private val pages = listOf(
         sections = listOf(
             OnboardingSection(
                 label = "料金",
-                body = "API利用料はアプリ代金とは別に、各プロバイダー（Google、OpenAIなど）へ支払います。料金は会話の量に応じて従量課金となります。",
+                body = "API利用料はアプリ代金とは別に、各プロバイダー（Google、OpenAIなど）へ支払います。料金は会話履歴、AIの思考トークン、利用回数に応じて変わります。",
                 linkLabel = "料金シミュレーションを開く（BYOKey Labサイト）",
                 linkUrl = AppLinks.PRICING_SIMULATOR
             ),
@@ -446,9 +446,10 @@ private fun OnboardingPageCard(
                             }
                             if (guide.platformLabel != null && guide.platformUrl != null) {
                                 TextButton(
-                                    onClick = { openOnboardingUrl(context, guide.platformUrl) }
+                                    onClick = { openOnboardingUrl(context, guide.platformUrl) },
+                                    modifier = Modifier.padding(start = 24.dp)
                                 ) {
-                                    Text("公式: ${guide.platformLabel}を開く", color = Grimoire.GoldDark)
+                                    Text("↳ 公式: ${guide.platformLabel}を開く", color = Grimoire.GoldDark)
                                 }
                             }
                         }

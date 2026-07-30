@@ -243,14 +243,58 @@ interface VocabCardDao {
     @Insert
     suspend fun insert(card: VocabCardEntity): Long
 
+    @Query(
+        """
+        SELECT * FROM vocab_cards
+        WHERE lower(trim(expression)) = :normalizedExpression
+        AND (
+            (:quickAssist = 1 AND source = 'QuickAssist')
+            OR (:quickAssist = 0 AND source != 'QuickAssist')
+        )
+        ORDER BY favorite DESC, createdAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun equivalentCard(normalizedExpression: String, quickAssist: Int): VocabCardEntity?
+
+    @Query("SELECT * FROM vocab_cards WHERE id = :id")
+    suspend fun byId(id: Long): VocabCardEntity?
+
+    @Query("UPDATE vocab_cards SET meaning = :meaning WHERE id = :id")
+    suspend fun updateMeaning(id: Long, meaning: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun restoreAll(cards: List<VocabCardEntity>)
 
     @Query("UPDATE vocab_cards SET favorite = :favorite WHERE id = :id")
     suspend fun setFavorite(id: Long, favorite: Boolean)
 
+    @Query(
+        """
+        UPDATE vocab_cards SET favorite = :favorite
+        WHERE lower(trim(expression)) = :normalizedExpression
+        AND (
+            (:quickAssist = 1 AND source = 'QuickAssist')
+            OR (:quickAssist = 0 AND source != 'QuickAssist')
+        )
+        """
+    )
+    suspend fun setFavoriteForEquivalent(normalizedExpression: String, quickAssist: Int, favorite: Boolean)
+
     @Query("DELETE FROM vocab_cards WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query(
+        """
+        DELETE FROM vocab_cards
+        WHERE lower(trim(expression)) = :normalizedExpression
+        AND (
+            (:quickAssist = 1 AND source = 'QuickAssist')
+            OR (:quickAssist = 0 AND source != 'QuickAssist')
+        )
+        """
+    )
+    suspend fun deleteEquivalent(normalizedExpression: String, quickAssist: Int)
 
     @Query("DELETE FROM vocab_cards")
     suspend fun deleteAll()

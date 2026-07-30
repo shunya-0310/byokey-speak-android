@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import androidx.room.withTransaction
 import java.time.LocalDate
+import java.util.Locale
 import org.json.JSONObject
 
 enum class ChatMode { Coach, Quick }
@@ -200,27 +201,98 @@ class ChatRepository(private val db: AppDatabase) {
     // --- 単語帳 (Review) ---
 
     fun observeVocabCards(): Flow<List<VocabCard>> =
-        db.vocabCardDao().observeAll().map { list -> list.map { it.toVocabCard() } }
+        db.vocabCardDao().observeAll().map { list ->
+            mergeEquivalentVocabCards(list).map { it.toVocabCard() }
+        }
 
     suspend fun saveVocabCard(expression: String, meaning: String, source: VocabSource, chatId: Long?) {
         val trimmed = expression.trim()
         if (trimmed.isBlank()) return
-        db.vocabCardDao().insert(
-            VocabCardEntity(
-                expression = trimmed,
-                meaning = meaning.trim(),
-                source = source.name,
-                chatId = chatId,
-                createdAt = System.currentTimeMillis()
-            )
-        )
-        bumpToday { it.copy(notesSaved = it.notesSaved + 1) }
+        val cleanExpression = normalizeVocabDisplayExpression(trimmed)
+        val cleanMeaning = meaning.trim()
+        val quickAssist = source == VocabSource.QuickAssist
+        val normalized = normalizedVocabExpression(cleanExpression)
+        db.withTransaction {
+            val existing = db.vocabCardDao().equivalentCard(normalized, quickAssist.toIntFlag())
+            if (existing == null) {
+                db.vocabCardDao().insert(
+                    VocabCardEntity(
+                        expression = cleanExpression,
+                        meaning = cleanMeaning,
+                        source = source.name,
+                        chatId = chatId,
+                        createdAt = System.currentTimeMillis()
+                    )
+                )
+                bumpToday { it.copy(notesSaved = it.notesSaved + 1) }
+            } else if (existing.meaning.isBlank() && cleanMeaning.isNotBlank()) {
+                db.vocabCardDao().updateMeaning(existing.id, cleanMeaning)
+            }
+        }
     }
 
-    suspend fun setVocabFavorite(cardId: Long, favorite: Boolean) =
-        db.vocabCardDao().setFavorite(cardId, favorite)
+    suspend fun setVocabFavorite(cardId: Long, favorite: Boolean) {
+        val card = db.vocabCardDao().byId(cardId) ?: return
+        db.vocabCardDao().setFavoriteForEquivalent(
+            normalizedExpression = normalizedVocabExpression(card.expression),
+            quickAssist = (card.source == VocabSource.QuickAssist.name).toIntFlag(),
+            favorite = favorite
+        )
+    }
 
-    suspend fun deleteVocabCard(cardId: Long) = db.vocabCardDao().delete(cardId)
+    suspend fun deleteVocabCard(cardId: Long) {
+        val card = db.vocabCardDao().byId(cardId) ?: return
+        db.vocabCardDao().deleteEquivalent(
+            normalizedExpression = normalizedVocabExpression(card.expression),
+            quickAssist = (card.source == VocabSource.QuickAssist.name).toIntFlag()
+        )
+    }
+
+    private fun mergeEquivalentVocabCards(cards: List<VocabCardEntity>): List<VocabCardEntity> {
+        return cards
+            .groupBy { card ->
+                VocabCardGroup(
+                    expression = normalizedVocabExpression(card.expression),
+                    quickAssist = card.source == VocabSource.QuickAssist.name
+                )
+            }
+            .values
+            .map { group ->
+                val representative = group
+                    .sortedWith(
+                        compareByDescending<VocabCardEntity> { it.favorite }
+                            .thenByDescending { it.createdAt }
+                    )
+                    .first()
+                val latest = group.maxBy { it.createdAt }
+                representative.copy(
+                    expression = normalizeVocabDisplayExpression(latest.expression),
+                    meaning = group
+                        .sortedByDescending { it.createdAt }
+                        .firstOrNull { it.meaning.isNotBlank() }
+                        ?.meaning
+                        ?: representative.meaning,
+                    favorite = group.any { it.favorite },
+                    createdAt = group.maxOf { it.createdAt }
+                )
+            }
+            .sortedByDescending { it.id }
+    }
+
+    private data class VocabCardGroup(
+        val expression: String,
+        val quickAssist: Boolean
+    )
+
+    private fun normalizedVocabExpression(expression: String): String =
+        normalizeVocabDisplayExpression(expression).lowercase(Locale.ROOT)
+
+    private fun normalizeVocabDisplayExpression(expression: String): String =
+        expression
+            .trim()
+            .replace(Regex("\\s+"), " ")
+
+    private fun Boolean.toIntFlag(): Int = if (this) 1 else 0
 
     suspend fun recordTurn() = bumpToday { it.copy(turns = it.turns + 1) }
 
