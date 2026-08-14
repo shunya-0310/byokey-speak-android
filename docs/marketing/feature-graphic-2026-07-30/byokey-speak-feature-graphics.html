@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BYOKey Speak — Google Play Feature Graphics</title>
+  <style>
+    :root {
+      --navy-950: #07101c;
+      --navy-900: #0d1724;
+      --navy-800: #142033;
+      --navy-700: #1a2840;
+      --navy-650: #22314e;
+      --ink: #e8ddbe;
+      --ink-muted: #b8aa83;
+      --paper: #f4ead0;
+      --paper-deep: #e4d2a8;
+      --paper-ink: #3a2c18;
+      --gold: #cfa43b;
+      --gold-deep: #a8842e;
+      --coral: #d08a76;
+      --coral-light: #e2a691;
+      --moss: #a3b47e;
+      --white: #fffdf8;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #202020;
+      font-family: "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    }
+
+    body {
+      display: grid;
+      gap: 36px;
+      padding: 36px;
+      justify-content: center;
+    }
+
+    .page {
+      position: relative;
+      width: 1024px;
+      height: 500px;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .page::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: .24;
+      background:
+        repeating-linear-gradient(2deg, rgba(255,255,255,.032) 0 1px, transparent 1px 31px),
+        radial-gradient(circle at 17% 27%, rgba(255,255,255,.09) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 73% 71%, rgba(0,0,0,.16) 0 1px, transparent 1.5px);
+      background-size: auto, 42px 42px, 59px 59px;
+      z-index: -1;
+    }
+
+    .brand-lockup {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .app-icon {
+      width: 58px;
+      height: 58px;
+      object-fit: cover;
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 10px 30px rgba(5, 8, 14, .18);
+    }
+
+    .app-name {
+      font-family: Georgia, "Yu Mincho", "Hiragino Mincho ProN", serif;
+      font-size: 23px;
+      line-height: 1;
+      letter-spacing: .8px;
+      font-weight: 700;
+    }
+
+    .eyebrow {
+      margin-top: 6px;
+      font-size: 10px;
+      letter-spacing: 2.2px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .main-copy {
+      margin: 0;
+      font-family: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif;
+      font-weight: 700;
+      letter-spacing: -.02em;
+    }
+
+    .sub-copy {
+      margin: 0;
+      font-family: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif;
+      font-weight: 600;
+    }
+
+    .price-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      border-radius: 999px;
+      padding: 8px 13px;
+      font-family: "Yu Gothic", "Hiragino Sans", "Noto Sans JP", sans-serif;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .price-badge small {
+      font-size: 12px;
+      letter-spacing: .4px;
+      font-weight: 700;
+      opacity: 1;
+    }
+
+    .price-badge strong {
+      font-size: 14px;
+    }
+
+    .phone {
+      position: absolute;
+      border-radius: 36px;
+      padding: 10px;
+      background: linear-gradient(145deg, #41506b 0%, #101827 35%, #03070d 100%);
+      box-shadow: 0 28px 58px rgba(4, 8, 14, .32);
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      width: 62px;
+      height: 15px;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      background: #05090f;
+      z-index: 3;
+    }
+
+    .screen {
+      position: relative;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 28px;
+      padding: 31px 14px 14px;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.03), transparent 27%),
+        linear-gradient(180deg, #0d1724 0%, #101b2c 100%);
+      border: 1px solid rgba(207, 164, 59, .45);
+    }
+
+    .screen-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(207, 164, 59, .26);
+    }
+
+    .screen-title {
+      font-family: Georgia, "Yu Mincho", serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--coral-light);
+    }
+
+    .online {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--moss);
+      font-size: 8px;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+    }
+
+    .online::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--moss);
+      box-shadow: 0 0 10px rgba(163,180,126,.65);
+    }
+
+    .flow-label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin: 8px 0 4px;
+      font-size: 7.5px;
+      letter-spacing: .8px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+
+    .flow-label .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 2px;
+      background: currentColor;
+    }
+
+    .bubble {
+      width: fit-content;
+      max-width: 91%;
+      margin-bottom: 5px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      font-size: 10px;
+      line-height: 1.4;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
+    }
+
+    .bubble.user {
+      margin-left: auto;
+      color: var(--ink);
+      background: #283a55;
+      border-bottom-right-radius: 4px;
+    }
+
+    .bubble.jp {
+      margin-left: auto;
+      color: #fff8f2;
+      background: #7e4c48;
+      border: 1px solid rgba(226,166,145,.56);
+      border-bottom-right-radius: 4px;
+    }
+
+    .bubble.coach {
+      color: var(--ink);
+      background: #22314e;
+      border-left: 2px solid var(--gold);
+      border-bottom-left-radius: 4px;
+    }
+
+    .bubble .explain {
+      display: block;
+      margin-top: 4px;
+      color: var(--ink-muted);
+      font-size: 8px;
+    }
+
+    .composer {
+      position: absolute;
+      right: 13px;
+      bottom: 12px;
+      left: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 30px;
+      border: 1px solid rgba(207,164,59,.44);
+      border-radius: 9px;
+      padding: 0 7px;
+      color: var(--ink-muted);
+      background: rgba(26,40,64,.8);
+      font-size: 8px;
+      font-style: italic;
+    }
+
+    .composer .spark {
+      margin-left: auto;
+      color: var(--coral);
+      font-style: normal;
+      font-size: 14px;
+    }
+
+    /* Direction 1: Copy first */
+    .direction-copy {
+      background:
+        radial-gradient(circle at 88% 30%, rgba(207,164,59,.23), transparent 31%),
+        linear-gradient(115deg, #f8efda 0%, #f2e7c9 58%, #e4d2a8 100%);
+      color: var(--paper-ink);
+    }
+
+    .direction-copy .left {
+      position: absolute;
+      top: 38px;
+      left: 48px;
+      width: 605px;
+    }
+
+    .direction-copy .brand-lockup { color: #26334b; }
+    .direction-copy .eyebrow { color: #8a6a27; }
+
+    .direction-copy .lab-lockup {
+      gap: 11px;
+      height: 58px;
+    }
+
+    .direction-copy .brand-keyhole {
+      position: relative;
+      flex: 0 0 45px;
+      width: 45px;
+      height: 58px;
+      overflow: hidden;
+    }
+
+    .direction-copy .brand-keyhole img {
+      position: absolute;
+      top: -72px;
+      left: -92px;
+      width: 225px;
+      height: 225px;
+      max-width: none;
+    }
+
+    .direction-copy .lab-name {
+      font-family: Georgia, "Yu Mincho", "Hiragino Mincho ProN", serif;
+      font-size: 25px;
+      line-height: 1;
+      letter-spacing: .5px;
+      font-weight: 700;
+      color: #26334b;
+    }
+
+    .direction-copy .lab-tagline {
+      margin-top: 7px;
+      font-family: Georgia, "Yu Mincho", "Hiragino Mincho ProN", serif;
+      font-size: 11px;
+      line-height: 1;
+      letter-spacing: .55px;
+      color: #8a6a27;
+    }
+
+    .direction-copy .main-copy {
+      margin-top: 56px;
+      font-size: 51px;
+      line-height: 1.33;
+      color: #18233a;
+    }
+
+    .direction-copy .main-copy em {
+      color: #8d554b;
+      font-style: normal;
+    }
+
+    .direction-copy .sub-copy {
+      margin-top: 18px;
+      font-size: 19px;
+      letter-spacing: .04em;
+      color: #5f5137;
+    }
+
+    .direction-copy .price-badge {
+      margin-top: 28px;
+      color: #28334a;
+      background: rgba(255,255,255,.56);
+      border: 1px solid rgba(163,126,44,.38);
+    }
+
+    .direction-copy .wallet-icon {
+      position: relative;
+      display: inline-block;
+      flex: 0 0 20px;
+      width: 20px;
+      height: 15px;
+      border: 1.7px solid #8d554b;
+      border-radius: 4px;
+    }
+
+    .direction-copy .wallet-icon::before {
+      content: "";
+      position: absolute;
+      top: 3px;
+      right: -2px;
+      width: 8px;
+      height: 7px;
+      border: 1.5px solid #8d554b;
+      border-radius: 3px;
+      background: #f8efda;
+    }
+
+    .direction-copy .wallet-icon::after {
+      content: "";
+      position: absolute;
+      top: 6px;
+      right: 2px;
+      width: 2px;
+      height: 2px;
+      border-radius: 50%;
+      background: #8d554b;
+    }
+
+    .direction-copy .phone {
+      top: -22px;
+      right: 34px;
+      width: 292px;
+      height: 544px;
+      padding: 8px;
+      border-radius: 44px;
+      transform: rotate(.9deg);
+    }
+
+    .direction-copy .phone::before {
+      top: 11px;
+      width: 68px;
+      height: 16px;
+    }
+
+    .direction-copy .screen {
+      border-radius: 36px;
+      padding: 39px 13px 13px;
+    }
+
+    .direction-copy .actual-thread {
+      padding-top: 9px;
+    }
+
+    .direction-copy .actual-card {
+      margin-bottom: 8px;
+      padding: 8px 10px;
+      color: var(--ink);
+      background: #20314e;
+      border: 1.2px solid rgba(207,164,59,.9);
+      border-radius: 11px;
+      font-family: Georgia, "Yu Mincho", "Hiragino Mincho ProN", serif;
+      font-size: 10.5px;
+      line-height: 1.35;
+    }
+
+    .direction-copy .actual-card.user {
+      margin-left: 26px;
+    }
+
+    .direction-copy .actual-card.ask {
+      margin-right: 15px;
+    }
+
+    .direction-copy .actual-card.coach {
+      margin-right: 23px;
+    }
+
+    .direction-copy .actual-label {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--coral-light);
+      font-family: Georgia, "Yu Mincho", "Hiragino Mincho ProN", serif;
+      font-size: 8px;
+      line-height: 1;
+      letter-spacing: 1.3px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .direction-copy .actual-note {
+      display: block;
+      margin-top: 4px;
+      color: var(--ink-muted);
+      font-size: 8.4px;
+      line-height: 1.3;
+    }
+
+    .direction-copy .phone-shadow {
+      position: absolute;
+      right: 4px;
+      bottom: -77px;
+      width: 370px;
+      height: 200px;
+      border-radius: 50%;
+      transform: rotate(-9deg);
+      background: radial-gradient(ellipse, rgba(60,45,20,.23), transparent 66%);
+      filter: blur(10px);
+    }
+
+    .direction-copy .accent-line {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 9px;
+      height: 100%;
+      background: linear-gradient(180deg, #8d554b, #cfa43b);
+    }
+
+    /* Direction 2: Screen first */
+    .direction-screen {
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 76% 47%, rgba(208,138,118,.13), transparent 29%),
+        radial-gradient(circle at 94% 5%, rgba(207,164,59,.11), transparent 27%),
+        linear-gradient(115deg, #07101c 0%, #0d1724 48%, #142033 100%);
+    }
+
+    .direction-screen .left {
+      position: absolute;
+      top: 36px;
+      left: 44px;
+      width: 484px;
+      z-index: 2;
+    }
+
+    .direction-screen .brand-lockup { color: var(--paper); }
+    .direction-screen .eyebrow { color: var(--gold); }
+
+    .direction-screen .main-copy {
+      margin-top: 42px;
+      font-size: 43px;
+      line-height: 1.38;
+      color: var(--white);
+    }
+
+    .direction-screen .main-copy .jp-focus {
+      display: inline-block;
+      color: var(--coral-light);
+      border-bottom: 3px solid rgba(207,164,59,.78);
+      padding-bottom: 2px;
+    }
+
+    .direction-screen .sub-copy {
+      margin-top: 14px;
+      font-size: 17px;
+      color: var(--ink-muted);
+      letter-spacing: .04em;
+    }
+
+    .direction-screen .price-badge {
+      margin-top: 24px;
+      color: #fff8e4;
+      background: #1e2c45;
+      border: 1px solid rgba(207,164,59,.65);
+    }
+
+    .direction-screen .phone {
+      top: -31px;
+      right: 52px;
+      width: 326px;
+      height: 562px;
+      transform: rotate(-1.4deg);
+      box-shadow: 0 36px 90px rgba(0,0,0,.46), 0 0 0 1px rgba(207,164,59,.16);
+    }
+
+    .direction-screen .screen {
+      padding: 42px 18px 18px;
+    }
+
+    .direction-screen .screen-title { font-size: 15px; }
+    .direction-screen .flow-label { margin-top: 11px; font-size: 8px; }
+    .direction-screen .bubble { font-size: 12px; padding: 10px 12px; margin-bottom: 7px; }
+    .direction-screen .bubble .explain { font-size: 9.2px; }
+    .direction-screen .composer { bottom: 17px; height: 35px; font-size: 9px; }
+
+    .direction-screen .flow-rail {
+      position: absolute;
+      top: 95px;
+      right: 398px;
+      width: 62px;
+      display: grid;
+      gap: 70px;
+      justify-items: end;
+      color: var(--gold);
+      opacity: .75;
+    }
+
+    .direction-screen .flow-rail span {
+      display: block;
+      width: 36px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, currentColor);
+    }
+
+    .direction-screen .flow-rail span:nth-child(2) { color: var(--coral); width: 52px; }
+    .direction-screen .flow-rail span:nth-child(3) { color: var(--moss); width: 43px; }
+
+    /* Direction 3: Brand first */
+    .direction-brand {
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 82% 47%, rgba(20,32,51,.15), transparent 29%),
+        linear-gradient(120deg, #0a1320 0%, #0f1b2d 60%, #131e31 100%);
+    }
+
+    .direction-brand .halo {
+      position: absolute;
+      top: -180px;
+      left: -72px;
+      width: 610px;
+      height: 610px;
+      border-radius: 50%;
+      border: 1px solid rgba(207,164,59,.14);
+      box-shadow:
+        0 0 0 38px rgba(207,164,59,.025),
+        0 0 0 102px rgba(207,164,59,.018),
+        0 0 110px rgba(207,164,59,.07);
+    }
+
+    .direction-brand .keyhole {
+      position: absolute;
+      top: 92px;
+      left: 362px;
+      width: 59px;
+      height: 82px;
+      opacity: .15;
+      filter: drop-shadow(0 0 28px rgba(207,164,59,.35));
+    }
+
+    .direction-brand .keyhole::before {
+      content: "";
+      position: absolute;
+      left: 15px;
+      width: 30px;
+      height: 30px;
+      border: 2px solid var(--gold);
+      border-radius: 50%;
+    }
+
+    .direction-brand .keyhole::after {
+      content: "";
+      position: absolute;
+      top: 23px;
+      left: 20px;
+      width: 20px;
+      height: 55px;
+      clip-path: polygon(50% 0, 100% 100%, 0 100%);
+      border: 2px solid var(--gold);
+      background: rgba(207,164,59,.04);
+    }
+
+    .direction-brand .left {
+      position: absolute;
+      top: 39px;
+      left: 52px;
+      width: 592px;
+      z-index: 2;
+    }
+
+    .direction-brand .brand-lockup { color: var(--paper); }
+    .direction-brand .app-icon {
+      width: 66px;
+      height: 66px;
+      border-radius: 16px;
+      box-shadow: 0 12px 38px rgba(0,0,0,.35), 0 0 0 1px rgba(207,164,59,.52);
+    }
+
+    .direction-brand .app-name { font-size: 28px; letter-spacing: 1.2px; }
+    .direction-brand .eyebrow { color: var(--gold); letter-spacing: 3px; }
+
+    .direction-brand .main-copy {
+      margin-top: 50px;
+      font-size: 45px;
+      line-height: 1.37;
+      color: var(--paper);
+    }
+
+    .direction-brand .main-copy .gold { color: #e3bd5b; }
+    .direction-brand .main-copy .coral { color: var(--coral-light); }
+
+    .direction-brand .sub-copy {
+      margin-top: 15px;
+      font-size: 18px;
+      color: var(--ink-muted);
+      letter-spacing: .08em;
+    }
+
+    .direction-brand .price-badge {
+      margin-top: 25px;
+      color: #fff8e4;
+      background: #152238;
+      border: 1px solid rgba(207,164,59,.6);
+      box-shadow: inset 0 0 18px rgba(207,164,59,.05);
+    }
+
+    .direction-brand .phone {
+      top: 35px;
+      right: 44px;
+      width: 275px;
+      height: 430px;
+      transform: rotate(1.3deg);
+      box-shadow: 0 32px 68px rgba(0,0,0,.52), 0 0 40px rgba(207,164,59,.06);
+    }
+
+    .direction-brand .constellation {
+      position: absolute;
+      inset: 0;
+      opacity: .35;
+      background-image:
+        radial-gradient(circle at 13% 18%, var(--gold) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 24% 76%, var(--ink) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 50% 12%, var(--coral) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 69% 80%, var(--gold) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 92% 18%, var(--ink) 0 1px, transparent 1.5px);
+    }
+
+    .direction-brand .ornament {
+      position: absolute;
+      left: 52px;
+      bottom: 28px;
+      width: 435px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(207,164,59,.58), transparent);
+    }
+
+    .direction-brand .ornament::after {
+      content: "✦";
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 0 12px;
+      color: var(--gold);
+      background: #0d1828;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <section class="page direction-copy" data-document-role="page" data-label="01 コピー重視案">
+    <div class="accent-line"></div>
+    <div class="phone-shadow"></div>
+    <div class="left">
+      <div class="brand-lockup lab-lockup">
+        <div class="brand-keyhole">
+          <img src="assets/byokey-lab-logo.png" alt="BYOKey Lab 鍵穴ロゴ">
+        </div>
+        <div>
+          <div class="lab-name">BYOKey Lab</div>
+          <div class="lab-tagline">The key is in your hand.</div>
+        </div>
+      </div>
+      <h1 class="main-copy">英語で話す。<br>困ったら、<em>日本語で聞く。</em></h1>
+      <p class="sub-copy">話し方も、教え方も、自分好みに。</p>
+      <div class="price-badge">
+        <span class="wallet-icon" aria-hidden="true"></span>
+        <small>買い切り・月額なし</small>
+        <strong>追加費用は使った分だけ</strong>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="screen-head">
+          <div class="screen-title">BYOKey Speak</div>
+          <div class="online">Coach</div>
+        </div>
+        <div class="actual-thread">
+          <div class="actual-card user">
+            <span class="actual-label">You</span>
+            I went to the station,<br>but I missed the train.
+          </div>
+          <div class="actual-card ask">
+            <span class="actual-label">✦ 日本語で相談</span>
+            「“乗り遅れた”って<br>自然に言うと？」
+          </div>
+          <div class="actual-card coach">
+            <span class="actual-label">✦ Coach</span>
+            You can say:<br><b>“I missed the train.”</b>
+            <span class="actual-note">「電車に乗り遅れた」の自然な言い方です。</span>
+          </div>
+        </div>
+        <div class="composer">Let's talk! <span class="spark">✦</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page direction-screen" data-document-role="page" data-label="02 スマホ画面重視案">
+    <div class="left">
+      <div class="brand-lockup">
+        <img class="app-icon" src="assets/byokey-speak-icon.png" alt="BYOKey Speak アプリアイコン">
+        <div>
+          <div class="app-name">BYOKey Speak</div>
+          <div class="eyebrow">Talk · Ask · Keep Going</div>
+        </div>
+      </div>
+      <h1 class="main-copy">英語で話す。<br>困ったら、<span class="jp-focus">日本語で聞く。</span></h1>
+      <p class="sub-copy">話し方も、教え方も、自分好みに。</p>
+      <div class="price-badge">
+        <small>買い切り・月額なし</small>
+        <strong>追加費用は使った分だけ</strong>
+      </div>
+    </div>
+    <div class="flow-rail"><span></span><span></span><span></span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="screen-head">
+          <div class="screen-title">BYOKey Speak</div>
+          <div class="online">Coach</div>
+        </div>
+        <div class="flow-label"><span class="dot"></span>English conversation</div>
+        <div class="bubble user">I went to the station,<br>but I missed the train.</div>
+        <div class="flow-label"><span class="dot"></span>日本語で相談できる</div>
+        <div class="bubble jp">「“乗り遅れた”って<br>自然に言うと？」</div>
+        <div class="flow-label"><span class="dot"></span>English suggestion</div>
+        <div class="bubble coach">
+          You can say:<br><b>“I missed the train.”</b>
+          <span class="explain">You could also say:<br>“I was late for the train.”</span>
+        </div>
+        <div class="composer">Ask in English or Japanese <span class="spark">✦</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page direction-brand" data-document-role="page" data-label="03 ブランド感重視案">
+    <div class="constellation"></div>
+    <div class="halo"></div>
+    <div class="keyhole"></div>
+    <div class="left">
+      <div class="brand-lockup">
+        <img class="app-icon" src="assets/byokey-speak-icon.png" alt="BYOKey Speak アプリアイコン">
+        <div>
+          <div class="app-name">BYOKey Speak</div>
+          <div class="eyebrow">The key is in your hand.</div>
+        </div>
+      </div>
+      <h1 class="main-copy"><span class="gold">英語で話す。</span><br>困ったら、<span class="coral">日本語で聞く。</span></h1>
+      <p class="sub-copy">話し方も、教え方も、自分好みに。</p>
+      <div class="price-badge">
+        <small>買い切り・月額なし</small>
+        <strong>追加費用は使った分だけ</strong>
+      </div>
+    </div>
+    <div class="ornament"></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="screen-head">
+          <div class="screen-title">Your English Coach</div>
+          <div class="online">Listening</div>
+        </div>
+        <div class="flow-label"><span class="dot"></span>English</div>
+        <div class="bubble user">I went to the station,<br>but I missed the train.</div>
+        <div class="flow-label"><span class="dot"></span>日本語で相談</div>
+        <div class="bubble jp">「“乗り遅れた”って<br>自然に言うと？」</div>
+        <div class="flow-label"><span class="dot"></span>Suggestion</div>
+        <div class="bubble coach">
+          Try this:<br><b>“I missed the train.”</b>
+          <span class="explain">短く、自然に伝わります。</span>
+        </div>
+        <div class="composer">Keep the conversation going <span class="spark">✦</span></div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

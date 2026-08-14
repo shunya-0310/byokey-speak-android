@@ -101,6 +101,7 @@ private enum class SettingsSection(val label: String) {
 @Composable
 fun SettingsScreen(
     viewModel: AppViewModel,
+    onReplayOnboarding: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -578,10 +579,19 @@ fun SettingsScreen(
                 SettingsSection.Help -> {
                     SectionCard(title = "チュートリアル") {
                         Text(
-                            text = "各画面の基本操作をもう一度確認できます。",
+                            text = "初回案内と各画面の基本操作をもう一度確認できます。",
                             style = MaterialTheme.typography.bodySmall,
                             color = Grimoire.InkFaded
                         )
+                        Button(
+                            onClick = {
+                                soundEffects?.play(AppSound.Select)
+                                onReplayOnboarding()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Grimoire.Burgundy)
+                        ) {
+                            Text("初回案内を再表示")
+                        }
                         Button(
                             onClick = {
                                 soundEffects?.play(AppSound.Select)
@@ -609,9 +619,12 @@ fun SettingsScreen(
                                 )
                             }
                             if (guide.platformLabel != null && guide.platformUrl != null) {
-                                TextButton(onClick = { openUrl(context, guide.platformUrl) }) {
+                                TextButton(
+                                    onClick = { openUrl(context, guide.platformUrl) },
+                                    modifier = Modifier.padding(start = 24.dp)
+                                ) {
                                     Text(
-                                        text = "公式: ${guide.platformLabel}を開く",
+                                        text = "↳ 公式: ${guide.platformLabel}を開く",
                                         color = Grimoire.GoldDark
                                     )
                                 }

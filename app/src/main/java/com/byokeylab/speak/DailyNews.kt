@@ -45,6 +45,20 @@ data class CoachLeads(
     val direct: String
 )
 
+enum class NewsFallbackKind {
+    None,
+    RssHeadline,
+    SourceList;
+
+    companion object {
+        fun fromJson(value: String?, fallback: Boolean): NewsFallbackKind = when (value) {
+            "rss_headline" -> RssHeadline
+            "source_list" -> SourceList
+            else -> if (fallback) SourceList else None
+        }
+    }
+}
+
 data class DailyNewsItem(
     val id: String,
     val category: NewsCategory,
@@ -52,8 +66,12 @@ data class DailyNewsItem(
     val summary: String,
     val question: String,
     val coachLeads: CoachLeads,
-    val sources: List<NewsSource>
-)
+    val sources: List<NewsSource>,
+    val fallbackKind: NewsFallbackKind = NewsFallbackKind.None
+) {
+    val canStartConversation: Boolean
+        get() = fallbackKind != NewsFallbackKind.SourceList
+}
 
 data class DailyNewsFeed(
     val date: String,
@@ -66,7 +84,8 @@ data class DailyNewsUiState(
     val loading: Boolean = true,
     val feed: DailyNewsFeed? = null,
     val usingCachedData: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val notice: String? = null
 )
 
 object DailyNewsParser {
@@ -105,7 +124,11 @@ object DailyNewsParser {
                             calm = requireNewsText(leads.getString("calm"), "coachLeads.calm"),
                             direct = requireNewsText(leads.getString("direct"), "coachLeads.direct")
                         ),
-                        sources = sources
+                        sources = sources,
+                        fallbackKind = NewsFallbackKind.fromJson(
+                            value = item.optString("fallbackKind", ""),
+                            fallback = item.optBoolean("fallback", false)
+                        )
                     )
                 )
             }
@@ -149,12 +172,12 @@ class DailyNewsClient(context: Context) {
         .build()
 
     suspend fun load(): DailyNewsUiState = withContext(Dispatchers.IO) {
-        val remote = runCatching { fetchRemote() }.getOrNull()
+        val remote = fetchRemoteFeed()
         if (remote != null) {
             runCatching { cacheFile.writeText(remote.first, Charsets.UTF_8) }
             val feedNotice = when {
                 LocalDate.parse(remote.second.date).isBefore(LocalDate.now()) ->
-                    "ニュースは毎朝6時半ころに配信されます。"
+                    DAILY_NEWS_SCHEDULE_NOTICE
                 else -> null
             }
             return@withContext DailyNewsUiState(
@@ -194,10 +217,24 @@ class DailyNewsClient(context: Context) {
         )
     }
 
-    private fun fetchRemote(): Pair<String, DailyNewsFeed> {
+    private fun fetchRemoteFeed(): Pair<String, DailyNewsFeed>? {
+        val today = LocalDate.now()
+        val candidates = FEED_URLS.mapNotNull { url ->
+            runCatching { fetchRemote(url) }.getOrNull()
+        }
+        return candidates.firstOrNull { (_, feed) ->
+            runCatching { LocalDate.parse(feed.date) == today }.getOrDefault(false)
+        } ?: candidates.maxByOrNull { (_, feed) ->
+            runCatching { LocalDate.parse(feed.date) }.getOrDefault(LocalDate.MIN)
+        }
+    }
+
+    private fun fetchRemote(url: String): Pair<String, DailyNewsFeed> {
         val request = Request.Builder()
-            .url(FEED_URL)
+            .url(url)
             .header("Accept", "application/json")
+            .header("Cache-Control", "no-cache")
+            .header("Pragma", "no-cache")
             .build()
         client.newCall(request).execute().use { response ->
             require(response.isSuccessful) { "News feed request failed." }
@@ -208,8 +245,12 @@ class DailyNewsClient(context: Context) {
 
     companion object {
         // The public feed contains no user data or API credentials.
+        const val DAILY_NEWS_SCHEDULE_NOTICE = "ニュースは毎朝6時半頃に配信されます。"
         const val FEED_URL =
             "https://byokey-lab.com/news/daily.json"
+        const val GITHUB_FEED_URL =
+            "https://raw.githubusercontent.com/shunya-0310/byokey-lab-site/main/public/news/daily.json"
+        val FEED_URLS = listOf(FEED_URL, GITHUB_FEED_URL)
     }
 }
 
@@ -233,16 +274,26 @@ object NewsConversation {
 
     fun hiddenContext(item: DailyNewsItem): String {
         val sourceLines = item.sources.joinToString("\n") { "${it.title}: ${it.url}" }
+        val summaryLabel = if (item.fallbackKind == NewsFallbackKind.RssHeadline) {
+            "Source headline summary"
+        } else {
+            "Verified summary"
+        }
+        val caution = if (item.fallbackKind == NewsFallbackKind.RssHeadline) {
+            "Only the headline and source were prepared automatically. Open the source before stating details beyond the summary."
+        } else {
+            "Treat these sources as the initial factual context."
+        }
         return """
             $HIDDEN_PREFIX
             This chat started from a current-news story.
             Category: ${item.category.label}
             Headline: ${item.headline}
-            Verified summary: ${item.summary}
+            $summaryLabel: ${item.summary}
             Suggested discussion question: ${item.question}
             Sources:
             $sourceLines
-            Treat these sources as the initial factual context. Search the web again when the learner
+            $caution Search the web again when the learner
             asks for newer facts, results, prices, scores, or details not supported above.
         """.trimIndent()
     }

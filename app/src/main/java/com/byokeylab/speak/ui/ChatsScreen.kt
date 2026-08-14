@@ -101,6 +101,7 @@ fun ChatsScreen(
     onSpeak: (Long?, String) -> Unit,
     speakingMessageId: Long?,
     onPauseSpeaking: () -> Unit,
+    compactLayout: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val openChatId = viewModel.openQuickChatId
@@ -117,7 +118,7 @@ fun ChatsScreen(
             modifier = modifier
         )
     } else {
-        ChatList(viewModel = viewModel, modifier = modifier)
+        ChatList(viewModel = viewModel, compactLayout = compactLayout, modifier = modifier)
     }
 }
 
@@ -178,6 +179,7 @@ private fun QuickChatDetail(
 @Composable
 private fun ChatList(
     viewModel: AppViewModel,
+    compactLayout: Boolean,
     modifier: Modifier = Modifier
 ) {
     val chats by viewModel.quickChats.collectAsState()
@@ -188,12 +190,16 @@ private fun ChatList(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = if (compactLayout) 4.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "✦ Chats",
-                style = MaterialTheme.typography.titleMedium,
+                style = if (compactLayout) {
+                    MaterialTheme.typography.titleSmall
+                } else {
+                    MaterialTheme.typography.titleMedium
+                },
                 color = Grimoire.BurgundyDeep,
                 modifier = Modifier.weight(1f)
             )
@@ -210,12 +216,17 @@ private fun ChatList(
 
         DailyNewsSection(
             state = viewModel.dailyNews,
-            onRefresh = viewModel::refreshDailyNews,
+            onRefresh = { viewModel.refreshDailyNews(manual = true) },
             onStartChat = viewModel::startNewsChat,
+            compactLayout = compactLayout,
             modifier = Modifier.tutorialAnchor(TutorialTargets.CHATS_DAILY_NEWS)
         )
         HorizontalDivider(
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+            modifier = Modifier.padding(
+                start = 16.dp,
+                end = 16.dp,
+                bottom = if (compactLayout) 6.dp else 10.dp
+            ),
             thickness = 1.dp,
             color = Grimoire.GoldDark.copy(alpha = 0.55f)
         )
@@ -284,6 +295,7 @@ private fun DailyNewsSection(
     state: DailyNewsUiState,
     onRefresh: () -> Unit,
     onStartChat: (DailyNewsItem) -> Unit,
+    compactLayout: Boolean,
     modifier: Modifier = Modifier
 ) {
     val soundEffects = LocalAppSoundEffects.current
@@ -304,7 +316,7 @@ private fun DailyNewsSection(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 10.dp)
+            .padding(bottom = if (compactLayout) 6.dp else 10.dp)
     ) {
         Row(
             modifier = Modifier
@@ -315,7 +327,11 @@ private fun DailyNewsSection(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "TODAY'S WORLD",
-                    style = MaterialTheme.typography.labelLarge,
+                    style = if (compactLayout) {
+                        MaterialTheme.typography.labelMedium
+                    } else {
+                        MaterialTheme.typography.labelLarge
+                    },
                     color = Grimoire.Burgundy,
                     fontWeight = FontWeight.Bold
                 )
@@ -349,7 +365,7 @@ private fun DailyNewsSection(
             state = categoryListState,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp),
+                .padding(top = if (compactLayout) 2.dp else 4.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
@@ -371,12 +387,15 @@ private fun DailyNewsSection(
             }
         }
 
-        state.error?.let { error ->
+        listOfNotNull(state.notice, state.error).distinct().forEach { message ->
             Text(
-                text = error,
+                text = message,
                 style = MaterialTheme.typography.labelSmall,
                 color = Grimoire.InkFaded,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                modifier = Modifier.padding(
+                    horizontal = 16.dp,
+                    vertical = if (compactLayout) 2.dp else 4.dp
+                )
             )
         }
 
@@ -403,6 +422,7 @@ private fun DailyNewsSection(
                 DailyNewsCard(
                     item = item,
                     onStartChat = { onStartChat(item) },
+                    compactLayout = compactLayout,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -410,7 +430,7 @@ private fun DailyNewsSection(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp),
+                        .padding(top = if (compactLayout) 4.dp else 8.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -439,12 +459,15 @@ private fun DailyNewsSection(
 private fun DailyNewsCard(
     item: DailyNewsItem,
     onStartChat: () -> Unit,
+    compactLayout: Boolean,
     modifier: Modifier = Modifier
 ) {
     val uriHandler = LocalUriHandler.current
+    val primarySource = item.sources.firstOrNull()
+    val opensSourceList = !item.canStartConversation
     Card(
         modifier = modifier
-            .height(214.dp)
+            .height(if (compactLayout) 142.dp else 214.dp)
             .grimoireBorder(8.dp),
         colors = CardDefaults.cardColors(containerColor = Grimoire.ParchmentLight),
         shape = RoundedCornerShape(8.dp),
@@ -453,12 +476,12 @@ private fun DailyNewsCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(12.dp)
+                .padding(if (compactLayout) 8.dp else 12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SourceIcon(
                     source = item.sources.firstOrNull(),
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(if (compactLayout) 28.dp else 34.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -472,7 +495,7 @@ private fun DailyNewsCard(
                         text = item.headline,
                         style = MaterialTheme.typography.titleSmall,
                         color = Grimoire.Ink,
-                        maxLines = 2,
+                        maxLines = if (compactLayout) 1 else 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 2.dp)
                     )
@@ -482,10 +505,10 @@ private fun DailyNewsCard(
                 text = item.summary,
                 style = MaterialTheme.typography.bodySmall,
                 color = Grimoire.InkFaded,
-                maxLines = 4,
+                maxLines = if (compactLayout) 2 else 4,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
-                    .padding(top = 6.dp)
+                    .padding(top = if (compactLayout) 3.dp else 6.dp)
                     .weight(1f)
             )
             Row(
@@ -495,7 +518,7 @@ private fun DailyNewsCard(
             ) {
                 OutlinedButton(
                     onClick = {
-                        item.sources.firstOrNull()?.let { source ->
+                        primarySource?.let { source ->
                             runCatching { uriHandler.openUri(source.url) }
                         }
                     },
@@ -510,16 +533,28 @@ private fun DailyNewsCard(
                     Text("Source")
                 }
                 Button(
-                    onClick = onStartChat,
+                    onClick = {
+                        if (opensSourceList) {
+                            primarySource?.let { source ->
+                                runCatching { uriHandler.openUri(source.url) }
+                            }
+                        } else {
+                            onStartChat()
+                        }
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = Grimoire.Burgundy)
                 ) {
                     Icon(
-                        Icons.Default.ChatBubbleOutline,
+                        if (opensSourceList) {
+                            Icons.AutoMirrored.Filled.OpenInNew
+                        } else {
+                            Icons.Default.ChatBubbleOutline
+                        },
                         contentDescription = null,
                         modifier = Modifier.size(17.dp)
                     )
                     Spacer(modifier = Modifier.width(5.dp))
-                    Text("Talk")
+                    Text(if (opensSourceList) "Headlines" else "Talk")
                 }
             }
         }

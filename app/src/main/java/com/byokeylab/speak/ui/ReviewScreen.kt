@@ -101,17 +101,27 @@ fun ReviewScreen(
             ReviewCollection.QuickAssist -> card.source == VocabSource.QuickAssist
         }
     }
-    val sorted = when (sort) {
-        VocabSort.Date -> collectionCards.sortedByDescending { it.timestampMillis }
-        VocabSort.Alphabet -> collectionCards.sortedBy { it.expression.lowercase() }
-        VocabSort.Favorite -> collectionCards.filter { it.favorite }.sortedBy { it.expression.lowercase() }
-    }
-    val availableLetters = sorted.mapNotNull { alphabetKeyOf(it.expression) }.toSet()
     val usageCounts = remember(collectionCards, userMessageTexts) {
         collectionCards.associate { card ->
             card.id to countExpressionOccurrences(card.expression, userMessageTexts)
         }
     }
+    val effectiveSort = if (collection == ReviewCollection.QuickAssist && sort == VocabSort.Frequency) {
+        VocabSort.Date
+    } else {
+        sort
+    }
+    val sorted = when (effectiveSort) {
+        VocabSort.Date -> collectionCards.sortedByDescending { it.timestampMillis }
+        VocabSort.Alphabet -> collectionCards.sortedBy { it.expression.lowercase() }
+        VocabSort.Frequency -> collectionCards.sortedWith(
+            compareByDescending<VocabCard> { usageCounts[it.id] ?: 0 }
+                .thenBy { it.expression.lowercase() }
+                .thenByDescending { it.timestampMillis }
+        )
+        VocabSort.Favorite -> collectionCards.filter { it.favorite }.sortedBy { it.expression.lowercase() }
+    }
+    val availableLetters = sorted.mapNotNull { alphabetKeyOf(it.expression) }.toSet()
 
     LaunchedEffect(collection) {
         requestedLetter = null
@@ -176,36 +186,45 @@ fun ReviewScreen(
                     style = MaterialTheme.typography.labelSmall,
                     color = Grimoire.InkFaded
                 )
-                Spacer(modifier = Modifier.weight(1f))
-                VocabSort.entries.forEach { candidate ->
-                    FilterChip(
-                        selected = sort == candidate,
-                        onClick = {
-                            if (sort != candidate) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    VocabSort.entries
+                        .filter { collection == ReviewCollection.Vocabulary || it != VocabSort.Frequency }
+                        .forEach { candidate ->
+                            FilterChip(
+                                selected = effectiveSort == candidate,
+                                onClick = {
+                                    if (effectiveSort != candidate) {
+                                        soundEffects?.play(AppSound.Select)
+                                        sort = candidate
+                                    }
+                                },
+                                label = { Text(candidate.label) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Grimoire.Burgundy,
+                                    selectedLabelColor = Grimoire.ParchmentLight
+                                )
+                            )
+                        }
+                    if (collection == ReviewCollection.Vocabulary) {
+                        IconButton(
+                            onClick = {
                                 soundEffects?.play(AppSound.Select)
-                                sort = candidate
-                            }
-                        },
-                        label = { Text(candidate.label) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Grimoire.Burgundy,
-                            selectedLabelColor = Grimoire.ParchmentLight
-                        )
-                    )
-                }
-                if (collection == ReviewCollection.Vocabulary) {
-                    IconButton(
-                        onClick = {
-                            soundEffects?.play(AppSound.Select)
-                            showAddDialog = true
-                        },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "カードを追加",
-                            tint = Grimoire.Burgundy
-                        )
+                                showAddDialog = true
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "カードを追加",
+                                tint = Grimoire.Burgundy
+                            )
+                        }
                     }
                 }
             }
@@ -391,6 +410,7 @@ private fun alphabetKeyOf(text: String): Char? {
 private enum class VocabSort(val label: String) {
     Date("日付"),
     Alphabet("ABC"),
+    Frequency("頻度"),
     Favorite("★")
 }
 

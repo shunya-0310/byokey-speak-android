@@ -363,10 +363,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- Chats (FR-004) ---
 
-    fun refreshDailyNews() {
-        dailyNews = dailyNews.copy(loading = true, error = null)
+    fun refreshDailyNews(manual: Boolean = false) {
+        dailyNews = dailyNews.copy(loading = true, error = null, notice = null)
         viewModelScope.launch {
-            dailyNews = dailyNewsClient.load()
+            val loaded = dailyNewsClient.load()
+            dailyNews = if (manual) {
+                loaded.copy(notice = DailyNewsClient.DAILY_NEWS_SCHEDULE_NOTICE)
+            } else {
+                loaded
+            }
         }
     }
 

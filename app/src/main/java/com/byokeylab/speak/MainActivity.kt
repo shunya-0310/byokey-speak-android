@@ -22,6 +22,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -34,6 +35,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -147,6 +150,7 @@ private fun BYOKeySpeakApp() {
     val userMessageTexts by viewModel.userMessageTexts.collectAsState()
     var showPostOnboardingSplash by rememberSaveable { mutableStateOf(false) }
     var finishOnboardingToSettings by rememberSaveable { mutableStateOf(false) }
+    var showOnboardingReplay by rememberSaveable { mutableStateOf(false) }
     val tutorialAnchors = remember { TutorialAnchorRegistry() }
 
     DisposableEffect(viewModel, soundEffects) {
@@ -335,10 +339,15 @@ private fun BYOKeySpeakApp() {
                 showPostOnboardingSplash = false
                 viewModel.completeOnboarding(finishOnboardingToSettings)
             })
-        } else if (!viewModel.onboardingDone) {
+        } else if (!viewModel.onboardingDone || showOnboardingReplay) {
             OnboardingScreen(onFinish = { goToSettings ->
-                finishOnboardingToSettings = goToSettings
-                showPostOnboardingSplash = true
+                if (showOnboardingReplay) {
+                    showOnboardingReplay = false
+                    if (goToSettings) viewModel.currentTab = MainTab.Settings
+                } else {
+                    finishOnboardingToSettings = goToSettings
+                    showPostOnboardingSplash = true
+                }
             })
         } else {
             MainScaffold(
@@ -348,7 +357,8 @@ private fun BYOKeySpeakApp() {
                 onAssistMic = startAssistMic,
                 onSpeak = speak,
                 speakingMessageId = speakingMessageId,
-                onPauseSpeaking = pauseSpeaking
+                onPauseSpeaking = pauseSpeaking,
+                onReplayOnboarding = { showOnboardingReplay = true }
             )
         }
 
@@ -805,96 +815,142 @@ private fun MainScaffold(
     onAssistMic: () -> Unit,
     onSpeak: (Long?, String) -> Unit,
     speakingMessageId: Long?,
-    onPauseSpeaking: () -> Unit
+    onPauseSpeaking: () -> Unit,
+    onReplayOnboarding: () -> Unit
 ) {
     val density = LocalDensity.current
     val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
     val soundEffects = LocalAppSoundEffects.current
 
-    Scaffold(
-        topBar = {
-            Column {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            text = "BYOKey Speak",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Grimoire.BurgundyDeep,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color.Transparent
-                    )
-                )
-                OrnamentDivider(modifier = Modifier.fillMaxWidth())
-            }
-        },
-        bottomBar = {
-            if (!isKeyboardVisible) {
-                NavigationBar(containerColor = Grimoire.ParchmentDeep) {
-                    MainTab.entries.forEach { tab ->
-                        NavigationBarItem(
-                            selected = viewModel.currentTab == tab,
-                            onClick = {
-                                if (viewModel.currentTab != tab) {
-                                    soundEffects?.play(AppSound.Pages)
-                                    viewModel.currentTab = tab
-                                }
-                                if (tab == MainTab.Chats) viewModel.openQuickChat(null)
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = tab.icon(),
-                                    contentDescription = tab.label
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val compactChrome = maxHeight < 700.dp
+
+        Scaffold(
+            topBar = {
+                if (compactChrome) {
+                    CompactAppHeader()
+                } else {
+                    Column {
+                        CenterAlignedTopAppBar(
+                            title = {
+                                Text(
+                                    text = "BYOKey Speak",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = Grimoire.BurgundyDeep,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             },
-                            label = { Text(tab.label) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Grimoire.Burgundy,
-                                selectedTextColor = Grimoire.Burgundy,
-                                unselectedIconColor = Grimoire.InkFaded,
-                                unselectedTextColor = Grimoire.InkFaded,
-                                indicatorColor = Grimoire.Gold.copy(alpha = 0.35f)
+                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                containerColor = Color.Transparent
                             )
                         )
+                        OrnamentDivider(modifier = Modifier.fillMaxWidth())
                     }
                 }
-            }
-        },
-        containerColor = Color.Transparent
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-        ) {
-            when (viewModel.currentTab) {
-                MainTab.Chats -> ChatsScreen(
-                    viewModel = viewModel,
-                    onEnglishMic = onEnglishMic,
-                    onJapaneseMic = onJapaneseMic,
-                    onAssistMic = onAssistMic,
-                    onSpeak = onSpeak,
-                    speakingMessageId = speakingMessageId,
-                    onPauseSpeaking = onPauseSpeaking,
-                    modifier = Modifier.fillMaxSize()
-                )
-                MainTab.Review -> ReviewScreen(
-                    viewModel = viewModel,
-                    modifier = Modifier.fillMaxSize()
-                )
-                MainTab.Progress -> ProgressScreen(
-                    viewModel = viewModel,
-                    modifier = Modifier.fillMaxSize()
-                )
-                MainTab.Settings -> SettingsScreen(
-                    viewModel = viewModel,
-                    modifier = Modifier.fillMaxSize()
-                )
+            },
+            bottomBar = {
+                if (!isKeyboardVisible) {
+                    NavigationBar(
+                        modifier = if (compactChrome) Modifier.height(76.dp) else Modifier,
+                        containerColor = Grimoire.ParchmentDeep
+                    ) {
+                        MainTab.entries.forEach { tab ->
+                            NavigationBarItem(
+                                selected = viewModel.currentTab == tab,
+                                onClick = {
+                                    if (viewModel.currentTab != tab) {
+                                        soundEffects?.play(AppSound.Pages)
+                                        viewModel.currentTab = tab
+                                    }
+                                    if (tab == MainTab.Chats) viewModel.openQuickChat(null)
+                                },
+                                icon = {
+                                    Icon(
+                                        imageVector = tab.icon(),
+                                        contentDescription = tab.label,
+                                        modifier = if (compactChrome) Modifier.size(20.dp) else Modifier
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = tab.label,
+                                        style = if (compactChrome) {
+                                            MaterialTheme.typography.labelSmall
+                                        } else {
+                                            MaterialTheme.typography.labelMedium
+                                        },
+                                        maxLines = 1
+                                    )
+                                },
+                                alwaysShowLabel = !compactChrome,
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Grimoire.Burgundy,
+                                    selectedTextColor = Grimoire.Burgundy,
+                                    unselectedIconColor = Grimoire.InkFaded,
+                                    unselectedTextColor = Grimoire.InkFaded,
+                                    indicatorColor = Grimoire.Gold.copy(alpha = 0.35f)
+                                )
+                            )
+                        }
+                    }
+                }
+            },
+            containerColor = Color.Transparent
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+            ) {
+                when (viewModel.currentTab) {
+                    MainTab.Chats -> ChatsScreen(
+                        viewModel = viewModel,
+                        onEnglishMic = onEnglishMic,
+                        onJapaneseMic = onJapaneseMic,
+                        onAssistMic = onAssistMic,
+                        onSpeak = onSpeak,
+                        speakingMessageId = speakingMessageId,
+                        onPauseSpeaking = onPauseSpeaking,
+                        compactLayout = compactChrome,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    MainTab.Review -> ReviewScreen(
+                        viewModel = viewModel,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    MainTab.Progress -> ProgressScreen(
+                        viewModel = viewModel,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    MainTab.Settings -> SettingsScreen(
+                        viewModel = viewModel,
+                        onReplayOnboarding = onReplayOnboarding,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun CompactAppHeader() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(WindowInsets.statusBars.asPaddingValues())
+            .padding(top = 4.dp, bottom = 4.dp)
+    ) {
+        Text(
+            text = "BYOKey Speak",
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            style = MaterialTheme.typography.titleMedium,
+            color = Grimoire.BurgundyDeep,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        OrnamentDivider(modifier = Modifier.fillMaxWidth())
     }
 }
 

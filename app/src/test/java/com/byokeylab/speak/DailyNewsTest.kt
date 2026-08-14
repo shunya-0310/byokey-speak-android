@@ -1,6 +1,7 @@
 package com.byokeylab.speak
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -92,6 +93,63 @@ class DailyNewsTest {
         )
 
         assertTrue(NewsConversation.isHidden(legacyVisibleRole))
+    }
+
+    @Test
+    fun parserKeepsFallbackKindSeparateFromOrdinaryNews() {
+        val feed = """
+            {
+              "schemaVersion": 1,
+              "status": "live",
+              "date": "2026-08-04",
+              "generatedAt": "2026-08-03T22:13:14.089Z",
+              "items": [
+                ${validItem("politics_economy")},
+                {
+                  "id": "technology-rss",
+                  "category": "technology",
+                  "headline": "Current technology headline",
+                  "summary": "This headline is currently listed by Google News for Technology. Open the source before discussing details beyond the headline.",
+                  "question": "What caught your attention about this technology headline?",
+                  "coachLeads": {
+                    "friendly": "I found a current technology headline we can use for conversation practice.",
+                    "energetic": "Here's a fresh technology headline to talk about today.",
+                    "calm": "There is a current technology headline available from Google News.",
+                    "direct": "Use this current technology headline as today's discussion topic."
+                  },
+                  "fallback": true,
+                  "fallbackKind": "rss_headline",
+                  "sources": [{"title": "Source", "url": "https://example.com/technology"}]
+                },
+                {
+                  "id": "sports-source-list",
+                  "category": "sports",
+                  "headline": "Today's Sports headlines",
+                  "summary": "A verified single-story summary could not be prepared safely today. Open the source list to choose a current headline, then use it as a conversation starter.",
+                  "question": "Which current sports headline would you like to talk about?",
+                  "coachLeads": {
+                    "friendly": "Let's pick a current sports headline together and talk about it.",
+                    "energetic": "There are fresh sports headlines today.",
+                    "calm": "A source list is available for today's sports news.",
+                    "direct": "Open today's sports headlines and choose one to discuss."
+                  },
+                  "fallback": true,
+                  "fallbackKind": "source_list",
+                  "sources": [{"title": "Source", "url": "https://example.com/sports"}]
+                },
+                ${validItem("entertainment")}
+              ]
+            }
+        """.trimIndent()
+
+        val parsed = DailyNewsParser.parse(feed)
+        val technology = parsed.items.first { it.category == NewsCategory.Technology }
+        val sports = parsed.items.first { it.category == NewsCategory.Sports }
+
+        assertEquals(NewsFallbackKind.RssHeadline, technology.fallbackKind)
+        assertTrue(technology.canStartConversation)
+        assertEquals(NewsFallbackKind.SourceList, sports.fallbackKind)
+        assertFalse(sports.canStartConversation)
     }
 
     private fun validItem(category: String): String = """

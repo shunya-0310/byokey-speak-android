@@ -36,8 +36,8 @@ android {
         applicationId = "com.byokeylab.speak"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.1.4"
+        versionCode = 8
+        versionName = "0.1.7"
         buildConfigField(
             "String",
             "AI_REPORT_ENDPOINT",

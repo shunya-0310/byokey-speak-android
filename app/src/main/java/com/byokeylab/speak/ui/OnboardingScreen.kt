@@ -118,8 +118,12 @@ private val pages = listOf(
                 linkLabel = "料金シミュレーションを開く（BYOKey Labサイト）",
                 linkUrl = AppLinks.PRICING_SIMULATOR
             ),
-            OnboardingSection("予算管理", "各プロバイダーの管理画面で、利用上限や予算アラートを設定しておくと安心です。"),
-            OnboardingSection("APIキーの取り扱いについて", "APIキーは他人と共有しないでください。スクリーンショットやメモの扱いにも注意してください。", accent = true)
+            OnboardingSection("予算管理", "各プロバイダーの管理画面で、利用上限や予算アラートを必ず設定してください。"),
+            OnboardingSection(
+                "APIキーの取り扱いについて",
+                "LLMプロバイダ各社の安全ガイドライン上、モバイルアプリへのAPIキー入力は推奨されていません。本アプリを利用する場合は、このセキュリティリスクを十分に理解し、必ず利用上限を設定したうえで、APIキーを慎重に取り扱ってください。APIキーは他人と共有せず、スクリーンショット、画面共有、ログ、Git、Drive、問い合わせ本文などにも含めないでください。",
+                accent = true
+            )
         ),
         backgroundImage = R.drawable.onboarding_bg_3
     ),

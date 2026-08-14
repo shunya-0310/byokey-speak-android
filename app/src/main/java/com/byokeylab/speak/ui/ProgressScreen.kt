@@ -50,6 +50,19 @@ import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Date
 import java.util.Locale
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import java.time.YearMonth
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import com.byokeylab.speak.VocabCard
+import java.time.Instant
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
+import androidx.compose.material.icons.filled.OpenInFull
 
 /**
  * Progress (FR-008): 継続日数、累計、Vocabulary、会話分析の可視化。
@@ -64,10 +77,18 @@ fun ProgressScreen(
     val analyses by viewModel.analyses.collectAsState()
 
     val streak = viewModel.streakOf(stats)
-    val totalStudyDays = stats.count { it.turns > 0 }
+    val studyDays = stats
+        .filter { it.turns > 0 }
+        .map { it.epochDay }
+        .toSet()
+
+    val totalStudyDays = studyDays.size
     val totalTurns = stats.sumOf { it.turns }
-    val totalCards = cards.size
+    val totalVocabulary = cards.size
     val favoriteCards = cards.count { it.favorite }
+
+    var showStudyCalendar by remember { mutableStateOf(false) }
+    var showVocabularyGraph by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -110,15 +131,36 @@ fun ProgressScreen(
             }
         }
 
-        WeeklyActivityRow(studyDays = stats.filter { it.turns > 0 }.map { it.epochDay }.toSet())
+        WeeklyActivityRow(studyDays = studyDays)
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCard(label = "累計学習日", value = "$totalStudyDays 日", modifier = Modifier.weight(1f))
-            StatCard(label = "累計ターン", value = "$totalTurns", modifier = Modifier.weight(1f))
+            StatCard(
+                label = "累計学習日",
+                value = "$totalStudyDays 日",
+                modifier = Modifier.weight(1f),
+                onClick = { showStudyCalendar = true }
+            )
+            StatCard(
+                label = "累計ターン",
+                value = "$totalTurns",
+                modifier = Modifier.weight(1f)
+            )
         }
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCard(label = "単語帳のカード", value = "$totalCards", modifier = Modifier.weight(1f))
-            StatCard(label = "お気に入り ★", value = "$favoriteCards", modifier = Modifier.weight(1f))
+            StatCard(
+            label = "ボキャブラリー",
+            value = "$totalVocabulary",
+            modifier = Modifier.weight(1f),
+            onClick = {
+                showVocabularyGraph = true
+            }
+        )
+            StatCard(
+                label = "お気に入り ★",
+                value = "$favoriteCards",
+                modifier = Modifier.weight(1f)
+            )
         }
         EnglishProfileSection(
             analyses = analyses,
@@ -131,6 +173,22 @@ fun ProgressScreen(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
+    }
+
+    if (showStudyCalendar) {
+    StudyCalendarBottomSheet(
+        studyDays = studyDays,
+        onDismiss = { showStudyCalendar = false }
+        )
+    }
+
+    if (showVocabularyGraph) {
+        VocabularyHistoryBottomSheet(
+            cards = cards,
+            onDismiss = {
+                showVocabularyGraph = false
+            }
+        )
     }
 
     if (viewModel.showAnalysisConsent) {
@@ -465,46 +523,628 @@ private fun WeeklyActivityRow(studyDays: Set<Long>) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StudyCalendarBottomSheet(
+    studyDays: Set<Long>,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
+
+    val currentMonth = YearMonth.now()
+
+    var displayedMonth by remember {
+        mutableStateOf(currentMonth)
+    }
+
+    val firstDay = displayedMonth.atDay(1)
+    val leadingBlankCount = firstDay.dayOfWeek.value % 7
+
+    val leadingBlanks = List<LocalDate?>(leadingBlankCount) {
+        null
+    }
+
+    val monthDays = (1..displayedMonth.lengthOfMonth()).map { day ->
+        displayedMonth.atDay(day)
+    }
+
+    val calendarDays: List<LocalDate?> =
+        leadingBlanks + monthDays
+
+    val trailingBlankCount =
+        (7 - calendarDays.size % 7) % 7
+
+    val paddedDays =
+        calendarDays +
+            List<LocalDate?>(trailingBlankCount) { null }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Grimoire.ParchmentLight
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "✦ 学習カレンダー",
+                style = MaterialTheme.typography.titleMedium,
+                color = Grimoire.BurgundyDeep
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = {
+                        displayedMonth =
+                            displayedMonth.minusMonths(1)
+                    }
+                ) {
+                    Text("‹")
+                }
+
+                Text(
+                    text = "${displayedMonth.year}年${displayedMonth.monthValue}月",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Grimoire.Burgundy,
+                    textAlign = TextAlign.Center
+                )
+
+                TextButton(
+                    onClick = {
+                        displayedMonth =
+                            displayedMonth.plusMonths(1)
+                    },
+                    enabled = displayedMonth < currentMonth
+                ) {
+                    Text("›")
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                listOf(
+                    "日", "月", "火", "水", "木", "金", "土"
+                ).forEach { weekday ->
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = weekday,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Grimoire.InkFaded
+                        )
+                    }
+                }
+            }
+
+            paddedDays.chunked(7).forEach { week ->
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    week.forEach { day ->
+                        val studied =
+                            day != null &&
+                                day.toEpochDay() in studyDays
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            contentAlignment = Alignment.TopCenter
+                        ) {
+                            if (day != null) {
+                                Column(
+                                    horizontalAlignment =
+                                        Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = day.dayOfMonth.toString(),
+                                        style =
+                                            MaterialTheme.typography.bodyMedium,
+                                        color =
+                                            if (day == LocalDate.now()) {
+                                                Grimoire.Burgundy
+                                            } else {
+                                                Grimoire.Ink
+                                            }
+                                    )
+
+                                    if (studied) {
+                                        Text(
+                                            text = "✦",
+                                            style =
+                                                MaterialTheme.typography.labelLarge,
+                                            color = Grimoire.GoldDark
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text(
+                text = "✦ 学習した日",
+                style = MaterialTheme.typography.labelSmall,
+                color = Grimoire.GoldDark,
+                modifier = Modifier.align(Alignment.End)
+            )
+        }
+    }
+}
+
 @Composable
 private fun StatCard(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
-    caption: String? = null
+    caption: String? = null,
+    onClick: (() -> Unit)? = null
 ) {
+    val cardModifier = if (onClick != null) {
+        modifier.clickable(onClick = onClick)
+    } else {
+        modifier
+    }
+
     Card(
-        modifier = modifier.grimoireBorder(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Grimoire.ParchmentLight),
+        modifier = cardModifier.grimoireBorder(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Grimoire.ParchmentLight
+        ),
         shape = RoundedCornerShape(10.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Grimoire.Burgundy
+                )
+
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Grimoire.InkFaded,
+                    textAlign = TextAlign.Center
+                )
+
+                caption?.let {
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontStyle = FontStyle.Italic,
+                        color = Grimoire.InkFaded,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            if (onClick != null) {
+                Icon(
+                    imageVector = Icons.Default.OpenInFull,
+                    contentDescription = "$label の詳細を開く",
+                    tint = Grimoire.GoldDark,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(15.dp)
+                )
+            }
+        }
+    }
+}
+
+private data class VocabHistoryPoint(
+    val date: LocalDate,
+    val count: Int
+)
+
+private fun buildVocabularyHistory(
+    cards: List<VocabCard>
+): List<VocabHistoryPoint> {
+    if (cards.isEmpty()) return emptyList()
+
+    val zoneId = ZoneId.systemDefault()
+
+    val additionsByDate = cards
+        .groupingBy { card ->
+            Instant
+                .ofEpochMilli(card.timestampMillis)
+                .atZone(zoneId)
+                .toLocalDate()
+        }
+        .eachCount()
+
+    val firstDate =
+        additionsByDate.keys.minOrNull()
+            ?: return emptyList()
+
+    val today = LocalDate.now()
+
+    var cumulative = 0
+    val result = mutableListOf<VocabHistoryPoint>()
+
+    var date = firstDate
+
+    while (!date.isAfter(today)) {
+        cumulative += additionsByDate[date] ?: 0
+
+        result += VocabHistoryPoint(
+            date = date,
+            count = cumulative
+        )
+
+        date = date.plusDays(1)
+    }
+
+    return result
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VocabularyHistoryBottomSheet(
+    cards: List<VocabCard>,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
+
+    val history = remember(cards) {
+        buildVocabularyHistory(cards)
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Grimoire.ParchmentLight
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = value,
-                style = MaterialTheme.typography.titleLarge,
-                color = Grimoire.Burgundy
+                text = "✦ ボキャブラリーの推移",
+                style = MaterialTheme.typography.titleMedium,
+                color = Grimoire.BurgundyDeep
             )
+
             Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = Grimoire.InkFaded,
-                textAlign = TextAlign.Center
+                text = "現在 ${cards.size} 語",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Grimoire.InkFaded
             )
-            caption?.let {
-                Spacer(modifier = Modifier.height(4.dp))
+
+            if (history.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "ボキャブラリーを追加すると\nここに推移が表示されます",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Grimoire.InkFaded,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Grimoire.ParchmentDeep
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    elevation = CardDefaults.cardElevation(
+                        defaultElevation = 0.dp
+                    )
+                ) {
+                    VocabularyLineChart(
+                        points = history,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VocabularyLineChart(
+    points: List<VocabHistoryPoint>,
+    modifier: Modifier = Modifier
+) {
+    if (points.isEmpty()) return
+
+    // Grimoire は @Composable なので、
+    // Canvas の外側で色を取得しておく
+    val palette = Grimoire
+    val gridColor = palette.InkFaded.copy(alpha = 0.18f)
+    val lineColor = palette.Burgundy
+    val pointColor = palette.GoldDark
+
+    val maxCount = points.maxOf { it.count }
+    val yMax = niceVocabularyAxisMax(maxCount)
+
+    val yLabels = listOf(
+        yMax,
+        yMax * 3 / 4,
+        yMax / 2,
+        yMax / 4,
+        0
+    )
+
+    val lastIndex = points.lastIndex
+
+    val xIndexes =
+        if (points.size <= 5) {
+            points.indices.toList()
+        } else {
+            listOf(
+                0,
+                (lastIndex * 0.25f).toInt(),
+                (lastIndex * 0.50f).toInt(),
+                (lastIndex * 0.75f).toInt(),
+                lastIndex
+            ).distinct()
+        }
+
+    // LocalDate.until(...).days ではなく、
+    // 実際の総日数を Long で取得
+    val rangeDays = ChronoUnit.DAYS.between(
+        points.first().date,
+        points.last().date
+    )
+
+    val crossesYear =
+        points.first().date.year != points.last().date.year
+
+    Row(
+        modifier = modifier
+    ) {
+        // Y軸
+        Column(
+            modifier = Modifier
+                .width(36.dp)
+                .height(200.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.End
+        ) {
+            yLabels.forEach { value ->
                 Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontStyle = FontStyle.Italic,
-                    color = Grimoire.InkFaded,
-                    textAlign = TextAlign.Center
+                    text = value.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.InkFaded
                 )
             }
+        }
+
+        Spacer(
+            modifier = Modifier.width(8.dp)
+        )
+
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+            ) {
+                val leftPadding = 4.dp.toPx()
+                val rightPadding = 4.dp.toPx()
+                val topPadding = 6.dp.toPx()
+                val bottomPadding = 6.dp.toPx()
+
+                val graphWidth =
+                    size.width -
+                        leftPadding -
+                        rightPadding
+
+                val graphHeight =
+                    size.height -
+                        topPadding -
+                        bottomPadding
+
+                // 横グリッド
+                repeat(5) { index ->
+                    val y =
+                        topPadding +
+                            graphHeight *
+                            index / 4f
+
+                    drawLine(
+                        color = gridColor,
+                        start = Offset(
+                            leftPadding,
+                            y
+                        ),
+                        end = Offset(
+                            size.width - rightPadding,
+                            y
+                        ),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                }
+
+                val path = Path()
+
+                points.forEachIndexed { index, point ->
+                    val x =
+                        if (points.size == 1) {
+                            leftPadding +
+                                graphWidth / 2f
+                        } else {
+                            leftPadding +
+                                graphWidth *
+                                index /
+                                points.lastIndex
+                        }
+
+                    val ratio =
+                        point.count.toFloat() /
+                            yMax.toFloat()
+
+                    val y =
+                        topPadding +
+                            graphHeight *
+                            (1f - ratio)
+
+                    if (index == 0) {
+                        path.moveTo(x, y)
+                    } else {
+                        path.lineTo(x, y)
+                    }
+                }
+
+                drawPath(
+                    path = path,
+                    color = lineColor,
+                    style = Stroke(
+                        width = 2.5.dp.toPx()
+                    )
+                )
+
+                // 最新値にだけ丸を表示
+                val latest = points.last()
+
+                val latestX =
+                    if (points.size == 1) {
+                        leftPadding +
+                            graphWidth / 2f
+                    } else {
+                        size.width -
+                            rightPadding
+                    }
+
+                val latestRatio =
+                    latest.count.toFloat() /
+                        yMax.toFloat()
+
+                val latestY =
+                    topPadding +
+                        graphHeight *
+                        (1f - latestRatio)
+
+                drawCircle(
+                    color = pointColor,
+                    radius = 4.dp.toPx(),
+                    center = Offset(
+                        latestX,
+                        latestY
+                    )
+                )
+            }
+
+            Spacer(
+                modifier = Modifier.height(6.dp)
+            )
+
+            if (xIndexes.size == 1) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = formatGraphDate(
+                            points[xIndexes.first()].date,
+                            rangeDays,
+                            crossesYear
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.InkFaded
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    xIndexes.forEach { index ->
+                        Text(
+                            text = formatGraphDate(
+                                points[index].date,
+                                rangeDays,
+                                crossesYear
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.InkFaded
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun niceVocabularyAxisMax(
+    maxCount: Int
+): Int {
+    if (maxCount <= 0) return 4
+
+    val unit = when {
+        maxCount <= 20 -> 4
+        maxCount <= 100 -> 20
+        maxCount <= 250 -> 40
+        maxCount <= 500 -> 100
+        else -> 200
+    }
+
+    return maxOf(
+        unit,
+        ((maxCount + unit - 1) / unit) * unit
+    )
+}
+
+private fun formatGraphDate(
+    date: LocalDate,
+    rangeDays: Long,
+    crossesYear: Boolean
+): String {
+    return when {
+        crossesYear -> {
+            "%02d/%02d".format(
+                date.year % 100,
+                date.monthValue
+            )
+        }
+
+        rangeDays > 120 -> {
+            "${date.monthValue}月"
+        }
+
+        else -> {
+            "${date.monthValue}/${date.dayOfMonth}"
         }
     }
 }
