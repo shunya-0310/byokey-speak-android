@@ -1,5 +1,6 @@
 package com.byokeylab.speak.ui
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -529,11 +530,13 @@ private fun LinkifiedMessageText(text: String) {
     val linkColor = Grimoire.Burgundy
     val annotated = remember(text, linkColor) {
         buildAnnotatedString {
-            append(text)
+            var previousEnd = 0
             matches.forEach { match ->
                 val url = match.value.trimEnd('.', ',', ')', ']', '。', '、')
-                val start = match.range.first
-                val end = start + url.length
+                append(text.substring(previousEnd, match.range.first))
+                val start = length
+                append(compactUrlLabel(url))
+                val end = length
                 addStringAnnotation("URL", url, start, end)
                 addStyle(
                     SpanStyle(
@@ -543,7 +546,9 @@ private fun LinkifiedMessageText(text: String) {
                     start,
                     end
                 )
+                previousEnd = match.range.last + 1
             }
+            append(text.substring(previousEnd))
         }
     }
     ClickableText(
@@ -555,6 +560,11 @@ private fun LinkifiedMessageText(text: String) {
                 ?.let { annotation -> runCatching { uriHandler.openUri(annotation.item) } }
         }
     )
+}
+
+private fun compactUrlLabel(url: String): String {
+    val host = runCatching { Uri.parse(url).host.orEmpty().removePrefix("www.") }.getOrDefault("")
+    return if (host.isBlank()) "リンク ↗" else "$host ↗"
 }
 
 @Composable
@@ -613,10 +623,8 @@ fun ConversationComposer(
             if (autoMode != ConversationAutoMode.Off) {
                 Text(
                     text = when (autoMode) {
-                        ConversationAutoMode.ManualSend ->
-                            "✦ マニュアル送信: 読み上げ後に英語マイクが起動します"
-                        ConversationAutoMode.FullAuto ->
-                            "✦ フルオート: 音声入力が終わると自動で送信します"
+                        ConversationAutoMode.ReadAndMicAuto ->
+                            "✦ 読み上げ&マイクオート: 返信の読み上げ後に英語マイクが起動します"
                         ConversationAutoMode.Off -> ""
                     },
                     style = MaterialTheme.typography.labelSmall,
@@ -649,8 +657,7 @@ fun ConversationComposer(
                                     Icons.Default.Headset,
                                     contentDescription = when (autoMode) {
                                         ConversationAutoMode.Off -> "通常モード"
-                                        ConversationAutoMode.ManualSend -> "マニュアル送信モード"
-                                        ConversationAutoMode.FullAuto -> "フルオートモード"
+                                        ConversationAutoMode.ReadAndMicAuto -> "読み上げ&マイクオート"
                                     },
                                     tint = if (autoMode != ConversationAutoMode.Off) {
                                         Grimoire.Gold
@@ -661,10 +668,10 @@ fun ConversationComposer(
                             }
                             if (autoMode != ConversationAutoMode.Off) {
                                 Text(
-                                    text = if (autoMode == ConversationAutoMode.FullAuto) "→⇔" else "→",
+                                    text = "A",
                                     modifier = Modifier.align(Alignment.BottomEnd),
                                     color = Grimoire.Burgundy,
-                                    fontSize = if (autoMode == ConversationAutoMode.FullAuto) 9.sp else 12.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }

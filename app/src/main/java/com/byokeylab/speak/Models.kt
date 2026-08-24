@@ -35,9 +35,7 @@ data class LearningNote(
 )
 
 enum class LlmProvider(val label: String, val defaultModel: String) {
-    Gemini("Gemini", "gemini-3.1-flash-lite"),
-    OpenAI("OpenAI", "gpt-5.4-mini"),
-    Anthropic("Claude", "claude-haiku-4-5-20251001")
+    Gemini("Gemini", "gemini-3.1-flash-lite")
 }
 
 /** 設定画面に表示するモデル候補。IDはタップで選択、コピーも可能。 */
@@ -52,15 +50,6 @@ val LlmProvider.modelOptions: List<ModelOption>
         LlmProvider.Gemini -> listOf(
             ModelOption("gemini-3.1-flash-lite", "コスパ重視。日常会話に十分", recommended = true),
             ModelOption("gemini-3.5-flash", "よりインテリジェント。3.1-flash-liteの約6倍の費用")
-        )
-        LlmProvider.OpenAI -> listOf(
-            ModelOption("gpt-5.4-mini", "コスパと会話品質のバランス", recommended = true),
-            ModelOption("gpt-5.4-nano", "最安・高速。シンプルな会話向け"),
-            ModelOption("gpt-5.5", "フラッグシップ。高品質だが高価格")
-        )
-        LlmProvider.Anthropic -> listOf(
-            ModelOption("claude-haiku-4-5-20251001", "高速・低価格。会話向け", recommended = true),
-            ModelOption("claude-sonnet-5", "バランス型の高性能。費用は高め")
         )
     }
 
@@ -129,19 +118,35 @@ enum class VoiceGender(val label: String) {
     Male("男性")
 }
 
+enum class SpeechOutputProvider(val label: String) {
+    Device("端末の音声"),
+    Gemini("Gemini音声（API利用）")
+}
+
+enum class GeminiTtsVoice(val apiName: String, val style: String) {
+    Zephyr("Zephyr", "明るい"), Puck("Puck", "快活"), Charon("Charon", "説明的"),
+    Kore("Kore", "芯がある"), Fenrir("Fenrir", "熱意がある"), Leda("Leda", "若々しい"),
+    Orus("Orus", "芯がある"), Aoede("Aoede", "軽やか"), Callirrhoe("Callirrhoe", "親しみやすい"),
+    Autonoe("Autonoe", "明るい"), Enceladus("Enceladus", "息づかいが柔らかい"), Iapetus("Iapetus", "明瞭"),
+    Umbriel("Umbriel", "親しみやすい"), Algieba("Algieba", "なめらか"), Despina("Despina", "なめらか"),
+    Erinome("Erinome", "明瞭"), Algenib("Algenib", "低くざらりとした声"), Rasalgethi("Rasalgethi", "説明的"),
+    Laomedeia("Laomedeia", "快活"), Achernar("Achernar", "やわらかい"), Alnilam("Alnilam", "芯がある"),
+    Schedar("Schedar", "落ち着いた"), Gacrux("Gacrux", "成熟した"), Pulcherrima("Pulcherrima", "はっきりした"),
+    Achird("Achird", "親しみやすい"), Zubenelgenubi("Zubenelgenubi", "カジュアル"), Vindemiatrix("Vindemiatrix", "穏やか"),
+    Sadachbia("Sadachbia", "生き生きした"), Sadaltager("Sadaltager", "知的"), Sulafat("Sulafat", "温かい")
+}
+
 enum class ConversationAutoMode {
     Off,
-    ManualSend,
-    FullAuto;
+    ReadAndMicAuto;
 
     fun next(): ConversationAutoMode = when (this) {
-        Off -> ManualSend
-        ManualSend -> FullAuto
-        FullAuto -> Off
+        Off -> ReadAndMicAuto
+        ReadAndMicAuto -> Off
     }
 
     val startsMicAfterReading: Boolean
-        get() = this != Off
+        get() = this == ReadAndMicAuto
 }
 
 data class AppSettings(
@@ -153,8 +158,10 @@ data class AppSettings(
     val reminderMinute: Int,
     val englishLevel: EnglishLevel = EnglishLevel.A1,
     val coachInstructions: String = AppStorage.DEFAULT_COACH_INSTRUCTIONS,
-    val theme: AppTheme = AppTheme.Dark,
+    val theme: AppTheme = AppTheme.Light,
     val voiceGender: VoiceGender = VoiceGender.Female,
+    val speechOutputProvider: SpeechOutputProvider = SpeechOutputProvider.Device,
+    val geminiTtsVoice: GeminiTtsVoice = GeminiTtsVoice.Kore,
     val soundEffectsEnabled: Boolean = true
 ) {
     val isConfigured: Boolean get() = apiKey.isNotBlank()
@@ -257,6 +264,7 @@ object AppLinks {
     const val TERMS_OF_USE = "https://byokey-lab.com/terms/"
     const val SUPPORT = "https://byokey-lab.com/support"
     const val API_GUIDE = "https://byokey-lab.com/guide/api/"
+    const val GITHUB_SOURCE = "https://github.com/shunya-0310/byokey-speak-android"
 
     /** 料金シミュレーションつきのアプリ公式ページ */
     const val PRICING_SIMULATOR = "https://byokey-lab.com/speak/english/"

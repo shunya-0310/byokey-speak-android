@@ -87,10 +87,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** APIキー未設定のまま送信しようとしたときの誘導ダイアログ (FR-001) */
     var showSetupPrompt by mutableStateOf(false)
 
+    /** 旧版でGemini以外を選んでいた場合の、一度だけ表示する安全な移行通知。 */
+    var geminiOnlyMigrationNotice by mutableStateOf(storage.consumeGeminiOnlyKeyRemovedNotice())
+        private set
+
     var showExternalDataConsent by mutableStateOf(
         onboardingDone && !storage.hasCurrentExternalDataConsent
     )
         private set
+
+    val hasExternalDataConsent: Boolean
+        get() = storage.hasCurrentExternalDataConsent
 
     var activeTutorial by mutableStateOf<AppTutorialKind?>(null)
         private set
@@ -102,8 +109,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     private var tutorialReplayQueue: List<AppTutorialKind> = emptyList()
+    private var pendingTutorialOpen: AppTutorialKind? = null
 
-    /** 読み上げ後の音声入力と自動送信を制御する3段階モード。 */
+    /** 読み上げ後に英語マイクを起動する任意の補助モード。 */
     var autoMode by mutableStateOf(ConversationAutoMode.Off)
 
     fun cycleAutoMode(): ConversationAutoMode {
@@ -383,6 +391,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 coachOpener = NewsConversation.visibleOpener(item, settings.coachInstructions)
             )
             openQuickChat(id)
+            maybeShowTutorial(AppTutorialKind.ChatControls)
         }
     }
 
@@ -610,14 +619,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun maybeShowTutorial(kind: AppTutorialKind) {
-        if (activeTutorial != null || !onboardingDone || storage.isTutorialSeen(kind)) return
+        if (activeTutorial != null || pendingTutorialOpen != null || !onboardingDone || storage.isTutorialSeen(kind)) return
         activeTutorialStep = 0
         when (kind) {
             AppTutorialKind.Chats -> {
                 currentTab = MainTab.Chats
                 openQuickChat(null)
             }
-            AppTutorialKind.ChatControls -> currentTab = MainTab.Chats
+            AppTutorialKind.ChatControls -> {
+                currentTab = MainTab.Chats
+                if (openQuickChatId == null) {
+                    pendingTutorialOpen = kind
+                    viewModelScope.launch {
+                        val chatId = repository.latestQuickChatId() ?: repository.createQuickChat()
+                        openQuickChat(chatId)
+                        pendingTutorialOpen = null
+                        activeTutorial = kind
+                    }
+                    return
+                }
+            }
             AppTutorialKind.Vocabulary -> currentTab = MainTab.Review
             AppTutorialKind.Progress -> currentTab = MainTab.Progress
             AppTutorialKind.Settings -> currentTab = MainTab.Settings
@@ -664,6 +685,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun replayTutorials() {
         storage.resetTutorials()
         tutorialReplayQueue = listOf(
+            AppTutorialKind.ChatControls,
             AppTutorialKind.Vocabulary,
             AppTutorialKind.Progress,
             AppTutorialKind.Settings
@@ -835,6 +857,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         showExternalDataConsent = false
     }
 
+    fun dismissGeminiOnlyMigrationNotice() {
+        geminiOnlyMigrationNotice = false
+    }
+
     private fun ensureExternalDataConsent(): Boolean {
         if (storage.hasCurrentExternalDataConsent) return true
         showExternalDataConsent = true
@@ -867,6 +893,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repository.deleteEverything()
             storage.clearAllPreferences()
+            GeminiTtsPlayer.clearCache(getApplication())
             settings = storage.loadSettings()
             onboardingDone = false
             openQuickChat(null)

@@ -25,7 +25,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class PortableSettings(
-    val provider: String,
     val model: String,
     val dailyReminderEnabled: Boolean,
     val reminderHour: Int,
@@ -34,6 +33,8 @@ data class PortableSettings(
     val coachInstructions: String,
     val theme: String,
     val voiceGender: String,
+    val speechOutputProvider: String = SpeechOutputProvider.Device.name,
+    val geminiTtsVoice: String = GeminiTtsVoice.Kore.name,
     val soundEffectsEnabled: Boolean
 )
 
@@ -220,7 +221,6 @@ private object BackupJson {
 }
 
 private fun PortableSettings.toJson() = JSONObject()
-    .put("provider", provider)
     .put("model", model)
     .put("dailyReminderEnabled", dailyReminderEnabled)
     .put("reminderHour", reminderHour)
@@ -229,10 +229,11 @@ private fun PortableSettings.toJson() = JSONObject()
     .put("coachInstructions", coachInstructions)
     .put("theme", theme)
     .put("voiceGender", voiceGender)
+    .put("speechOutputProvider", speechOutputProvider)
+    .put("geminiTtsVoice", geminiTtsVoice)
     .put("soundEffectsEnabled", soundEffectsEnabled)
 
 private fun JSONObject.toPortableSettings() = PortableSettings(
-    provider = getString("provider"),
     model = getString("model"),
     dailyReminderEnabled = getBoolean("dailyReminderEnabled"),
     reminderHour = getInt("reminderHour"),
@@ -241,6 +242,8 @@ private fun JSONObject.toPortableSettings() = PortableSettings(
     coachInstructions = getString("coachInstructions"),
     theme = getString("theme"),
     voiceGender = getString("voiceGender"),
+    speechOutputProvider = optString("speechOutputProvider", SpeechOutputProvider.Device.name),
+    geminiTtsVoice = optString("geminiTtsVoice", GeminiTtsVoice.Kore.name),
     soundEffectsEnabled = getBoolean("soundEffectsEnabled")
 )
 

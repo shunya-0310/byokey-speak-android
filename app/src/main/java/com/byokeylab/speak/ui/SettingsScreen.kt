@@ -71,12 +71,15 @@ import com.byokeylab.speak.AppTutorialKind
 import com.byokeylab.speak.AppViewModel
 import com.byokeylab.speak.EnglishLevel
 import com.byokeylab.speak.Grimoire
+import com.byokeylab.speak.GeminiTtsVoice
+import com.byokeylab.speak.GeminiVoicePreviewPlayer
 import com.byokeylab.speak.LocalAppSoundEffects
 import com.byokeylab.speak.Guides
 import com.byokeylab.speak.LlmProvider
 import com.byokeylab.speak.ModelOption
 import com.byokeylab.speak.ReminderScheduler
 import com.byokeylab.speak.TutorialTargets
+import com.byokeylab.speak.SpeechOutputProvider
 import com.byokeylab.speak.VoiceGender
 import com.byokeylab.speak.grimoireBorder
 import com.byokeylab.speak.modelOptions
@@ -109,7 +112,8 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val soundEffects = LocalAppSoundEffects.current
 
-    var provider by rememberSaveable(settings.provider) { mutableStateOf(settings.provider) }
+    // Gemini専用版。旧設定のproviderはAppStorageで一回限り安全に移行する。
+    val provider = LlmProvider.Gemini
     // APIキーはsavedInstanceStateへ残さない (NFR-001)
     var apiKey by androidx.compose.runtime.remember(settings.apiKey) { mutableStateOf(settings.apiKey) }
     var model by rememberSaveable(settings.model) { mutableStateOf(settings.model) }
@@ -118,6 +122,12 @@ fun SettingsScreen(
     var reminderEnabled by rememberSaveable(settings.dailyReminderEnabled) { mutableStateOf(settings.dailyReminderEnabled) }
     var theme by rememberSaveable(settings.theme) { mutableStateOf(settings.theme) }
     var voiceGender by rememberSaveable(settings.voiceGender) { mutableStateOf(settings.voiceGender) }
+    var speechOutputProvider by rememberSaveable(settings.speechOutputProvider) {
+        mutableStateOf(settings.speechOutputProvider)
+    }
+    var geminiTtsVoice by rememberSaveable(settings.geminiTtsVoice) {
+        mutableStateOf(settings.geminiTtsVoice)
+    }
     var soundEffectsEnabled by rememberSaveable(settings.soundEffectsEnabled) {
         mutableStateOf(settings.soundEffectsEnabled)
     }
@@ -177,6 +187,8 @@ fun SettingsScreen(
         coachInstructions = coachInstructions.trim().ifBlank { AppStorage.DEFAULT_COACH_INSTRUCTIONS },
         theme = theme,
         voiceGender = voiceGender,
+        speechOutputProvider = speechOutputProvider,
+        geminiTtsVoice = geminiTtsVoice,
         soundEffectsEnabled = soundEffectsEnabled
     )
 
@@ -237,36 +249,19 @@ fun SettingsScreen(
         ) {
             when (selectedSection) {
                 SettingsSection.System -> {
-                    SectionCard(title = "API") {
-                        Text("LLM provider", style = MaterialTheme.typography.labelLarge, color = Grimoire.Ink)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            LlmProvider.entries.forEach { candidate ->
-                                FilterChip(
-                                    selected = provider == candidate,
-                                    onClick = {
-                                        if (provider != candidate) {
-                                            soundEffects?.play(AppSound.Select)
-                                            provider = candidate
-                                            model = candidate.defaultModel
-                                            apiKey = ""
-                                            testResult = null
-                                        }
-                                    },
-                                    label = { Text(candidate.label) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = Grimoire.Burgundy,
-                                        selectedLabelColor = Grimoire.ParchmentLight
-                                    )
-                                )
-                            }
-                        }
+                    SectionCard(title = "Gemini API") {
+                        Text(
+                            "BYOKey SpeakはGemini専用です。APIキーはこの端末内に暗号化して保存されます。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Grimoire.InkFaded
+                        )
                         OutlinedTextField(
                             value = apiKey,
                             onValueChange = { apiKey = it },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .tutorialAnchor(TutorialTargets.SETTINGS_API_KEY),
-                            label = { Text("${provider.label} API key") },
+                            label = { Text("Gemini API key") },
                             singleLine = true,
                             visualTransformation = PasswordVisualTransformation()
                         )
@@ -283,7 +278,7 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.labelMedium,
                             color = Grimoire.Ink
                         )
-                        provider.modelOptions.forEach { option ->
+                        LlmProvider.Gemini.modelOptions.forEach { option ->
                             ModelOptionRow(
                                 option = option,
                                 selected = model.trim() == option.id,
@@ -296,7 +291,7 @@ fun SettingsScreen(
                             )
                         }
                         Text(
-                            text = "上記は${provider.label}の代表的なモデルです。最新のモデルや料金、プロバイダー側の課金設定は各公式サイトで確認してください。他のモデルIDを直接入力することもできます。",
+                            text = "上記はGeminiの代表的なモデルです。最新のモデルや料金、課金設定はGoogleの公式サイトで確認してください。他のモデルIDを直接入力することもできます。",
                             style = MaterialTheme.typography.bodySmall,
                             color = Grimoire.InkFaded
                         )
@@ -396,11 +391,6 @@ fun SettingsScreen(
                                 }
                             )
                         }
-                        Text(
-                            text = "タブ移動、選択、送受信などの短い効果音を切り替えます。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Grimoire.InkFaded
-                        )
                     }
                 }
 
@@ -474,15 +464,18 @@ fun SettingsScreen(
                             color = Grimoire.InkFaded
                         )
                     }
-                    SectionCard(title = "読み上げの声") {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            VoiceGender.entries.forEach { candidate ->
+                    SectionCard(title = "読み上げ") {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            SpeechOutputProvider.entries.forEach { candidate ->
                                 FilterChip(
-                                    selected = voiceGender == candidate,
+                                    selected = speechOutputProvider == candidate,
                                     onClick = {
-                                        if (voiceGender != candidate) {
+                                        if (speechOutputProvider != candidate) {
                                             soundEffects?.play(AppSound.Select)
-                                            voiceGender = candidate
+                                            speechOutputProvider = candidate
                                         }
                                     },
                                     label = { Text(candidate.label) },
@@ -493,11 +486,60 @@ fun SettingsScreen(
                                 )
                             }
                         }
-                        Text(
-                            text = "※端末に入っている音声によっては、声の違いが小さい場合があります。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Grimoire.InkFaded
-                        )
+                        if (speechOutputProvider == SpeechOutputProvider.Device) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                VoiceGender.entries.forEach { candidate ->
+                                    FilterChip(
+                                        selected = voiceGender == candidate,
+                                        onClick = {
+                                            if (voiceGender != candidate) {
+                                                soundEffects?.play(AppSound.Select)
+                                                voiceGender = candidate
+                                            }
+                                        },
+                                        label = { Text(candidate.label) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = Grimoire.Burgundy,
+                                            selectedLabelColor = Grimoire.ParchmentLight
+                                        )
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "端末に入っている音声で読み上げます。端末によっては声の違いが小さい場合があります。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Grimoire.InkFaded
+                            )
+                        } else {
+                            Text(
+                                text = "Voice (Gemini) ※選択時に音声が再生されます",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Grimoire.Ink
+                            )
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                GeminiTtsVoice.entries.forEach { candidate ->
+                                    FilterChip(
+                                        selected = geminiTtsVoice == candidate,
+                                        onClick = {
+                                            if (geminiTtsVoice != candidate) {
+                                                soundEffects?.play(AppSound.Select)
+                                                geminiTtsVoice = candidate
+                                                // 同梱済み見本。APIキーも通信も使わない。
+                                                GeminiVoicePreviewPlayer.play(context, candidate)
+                                            }
+                                        },
+                                        label = { Text(candidate.apiName) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = Grimoire.Burgundy,
+                                            selectedLabelColor = Grimoire.ParchmentLight
+                                        )
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -635,6 +677,9 @@ fun SettingsScreen(
 
                 SettingsSection.About -> {
                     SectionCard(title = "About") {
+                        TextButton(onClick = { openUrl(context, AppLinks.GITHUB_SOURCE) }) {
+                            Text("ソースコード（GitHub）", color = Grimoire.GoldDark)
+                        }
                         TextButton(onClick = { openUrl(context, AppLinks.PRIVACY_POLICY) }) {
                             Text("プライバシーポリシー", color = Grimoire.GoldDark)
                         }
@@ -648,7 +693,7 @@ fun SettingsScreen(
                             Text("お問い合わせ・フィードバック", color = Grimoire.GoldDark)
                         }
                         Text(
-                            text = "会話内容とコーチ設定は、選択したLLMプロバイダーへ送信されます。BYOKey Labは通常の会話やAPIキーを収集しません。不適切なAI返信を報告した場合のみ、選択した返信、理由、任意で直前のユーザー発言が送信されます。",
+                            text = "会話内容とコーチ設定はGeminiへ送信されます。Gemini音声を使う場合は、読み上げる返信文もGeminiへ送信されます。BYOKey Labは通常の会話やAPIキーを収集しません。不適切なAI返信を報告した場合のみ、選択した返信、理由、任意で直前のユーザー発言が送信されます。",
                             style = MaterialTheme.typography.bodySmall,
                             color = Grimoire.InkFaded
                         )

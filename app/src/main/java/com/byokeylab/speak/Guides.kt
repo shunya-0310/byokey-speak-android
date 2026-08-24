@@ -25,18 +25,6 @@ object Guides {
             "guides/api_guide_gemini.pdf",
             "Google AI Studio",
             "https://aistudio.google.com/app/apikey"
-        ),
-        Guide(
-            "APIキー設定ガイド(GPT)",
-            "guides/api_guide_gpt.pdf",
-            "OpenAI Platform",
-            "https://platform.openai.com/api-keys"
-        ),
-        Guide(
-            "APIキー設定ガイド(Claude)",
-            "guides/api_guide_claude.pdf",
-            "Claude Console",
-            "https://console.anthropic.com/settings/keys"
         )
     )
 

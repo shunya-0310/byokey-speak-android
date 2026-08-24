@@ -1,6 +1,6 @@
 # Google Play公開チェックリスト
 
-更新日: 2026-07-28
+更新日: 2026-08-23
 
 詳細な設計判断は[Google Play審査・データ移行 実装方針](PLAY_REVIEW_AND_DATA_PORTABILITY_PLAN.md)を参照する。
 Release署名の具体的な手順は[Release署名とAAB作成手順](RELEASE_SIGNING_RUNBOOK.md)を参照する。
@@ -23,12 +23,11 @@ Release署名の具体的な手順は[Release署名とAAB作成手順](RELEASE_S
 - [x] 報告専用Workerをデプロイし、releaseビルドへURLを設定する
 - [x] 外部LLM送信を明示的に同意する操作を追加する
 - [x] 生成AI向けの共通安全プロンプトを追加する
-- [ ] 3社のプロバイダー安全設定を実通信で確認する
+- [ ] Gemini APIの利用条件と安全設定を実通信で確認する
 - [x] AboutにAI回答の注意事項を追加する
 - [x] Aboutに利用規約リンクを追加する
-- [ ] 実機でGemini、OpenAI、Claudeを各1回以上確認する
-- [ ] 各プロバイダーのモバイルアプリでのAPIキー利用条件を確認する
-- [ ] OpenAIのクライアント環境に関する公式注意事項とBYOK方式の整合を確認する
+- [ ] 実機でGemini会話、Gemini TTS、端末音声を各1回以上確認する
+- [ ] GeminiのクライアントアプリでのAPIキー利用に関する注意事項とBYOK方式の整合を確認する
 - [x] `compileSdk`を36.1、`targetSdk`を36へ更新する
 - [x] ReleaseビルドでR8を有効にする
 - [x] リリース署名鍵を作成し、安全な場所へ保管する
@@ -48,7 +47,7 @@ Release署名の具体的な手順は[Release署名とAAB作成手順](RELEASE_S
 - [ ] Data safetyを公開時コードに合わせて申告する
 - [ ] コンテンツレーティングを回答する
 - [ ] 広告なしを申告する
-- [ ] 初回版の対象年齢を18歳以上とするか、各社規約とIARC回答で確定する
+- [ ] Play Consoleの対象年齢を「18歳以上のみ」にし、未成年者のアクセス制限を有効化する
 - [ ] プライバシーポリシーURLを登録する
 - [ ] サポートURLと問い合わせフォームを登録する
 - [ ] 2026年9月30日までにパッケージ名と署名鍵の登録状態を確認する
@@ -64,9 +63,9 @@ Release署名の具体的な手順は[Release署名とAAB作成手順](RELEASE_S
 - [ ] スマートフォンのスクリーンショット
 - [ ] 短い説明
 - [ ] 詳細説明
-- [ ] BYOK、API料金、対応プロバイダーを明記する
+- [ ] BYOK、Gemini API料金、Gemini専用であることを明記する
 - [ ] 「月額なし」と「LLM利用料は別」を隣接して表示する
-- [ ] 「APIキー必須」「会話内容は選択したLLMへ送信」を明記する
+- [ ] 「Gemini APIキー必須」「会話内容はGeminiへ送信」を明記する
 - [ ] 「AIの回答には誤りが含まれる場合がある」を明記する
 
 ## サイト
@@ -95,6 +94,5 @@ Release署名の具体的な手順は[Release署名とAAB作成手順](RELEASE_S
 - Android backup security: https://developer.android.com/privacy-and-security/risks/backup-best-practices
 - Android Storage Access Framework: https://developer.android.com/training/data-storage/shared/documents-files
 - Gemini API: https://ai.google.dev/api
-- OpenAI Responses API: https://developers.openai.com/api/reference/resources/responses/methods/create
-- OpenAI API key safety: https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety
-- Anthropic Messages API: https://platform.claude.com/docs/en/api/messages
+- Gemini API terms: https://ai.google.dev/gemini-api/terms?hl=ja
+- Gemini speech generation: https://ai.google.dev/gemini-api/docs/speech-generation

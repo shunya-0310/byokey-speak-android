@@ -11,6 +11,7 @@ import android.os.Looper
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -151,6 +152,7 @@ private fun BYOKeySpeakApp() {
     var showPostOnboardingSplash by rememberSaveable { mutableStateOf(false) }
     var finishOnboardingToSettings by rememberSaveable { mutableStateOf(false) }
     var showOnboardingReplay by rememberSaveable { mutableStateOf(false) }
+    var onboardingReplayStartPage by rememberSaveable { mutableStateOf(0) }
     val tutorialAnchors = remember { TutorialAnchorRegistry() }
 
     DisposableEffect(viewModel, soundEffects) {
@@ -180,11 +182,16 @@ private fun BYOKeySpeakApp() {
         }
     }
 
-    // TTS (コーチ返信の読み上げ + ハンズフリー自動ループ)
+    // TTS (端末音声またはGemini音声。読み上げ&マイクオート時は完了後に英語マイクを開く)
     val ttsRef = remember { mutableStateOf<TextToSpeech?>(null) }
+    val geminiTts = remember(context) { GeminiTtsPlayer(context) }
     var speakingMessageId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pendingAutoMicChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val startMicRef = remember { mutableStateOf<((Long) -> Unit)?>(null) }
+    DisposableEffect(geminiTts) {
+        onDispose { geminiTts.close() }
+    }
     DisposableEffect(Unit) {
         var engine: TextToSpeech? = null
         engine = TextToSpeech(context) { status ->
@@ -204,11 +211,15 @@ private fun BYOKeySpeakApp() {
                     }
                     override fun onDone(utteranceId: String?) {
                         mainHandler.post { speakingMessageId = null }
-                        // 自動モード: 読み上げが終わったらマイクを起動する
-                        if (utteranceId != null && utteranceId.startsWith("auto_")) {
-                            val chatId = utteranceId.removePrefix("auto_").toLongOrNull() ?: return
+                        val chatId = utteranceId
+                            ?.removePrefix("msg_")
+                            ?.takeIf { it != utteranceId }
+                            ?.toLongOrNull()
+                        // 読み上げ&マイクオート: 返信の再生が完了した時だけ英語マイクを起動する。
+                        if (chatId != null && pendingAutoMicChatId == chatId) {
                             mainHandler.post {
                                 if (viewModel.autoMode.startsMicAfterReading) {
+                                    pendingAutoMicChatId = null
                                     startMicRef.value?.invoke(chatId)
                                 }
                             }
@@ -248,31 +259,59 @@ private fun BYOKeySpeakApp() {
         }
     }
 
+    fun startEnglishMicAfterReading(chatId: Long?) {
+        if (chatId != null && pendingAutoMicChatId == chatId && viewModel.autoMode.startsMicAfterReading) {
+            pendingAutoMicChatId = null
+            startMicRef.value?.invoke(chatId)
+        }
+    }
+
     val speak: (Long?, String) -> Unit = { messageId, text ->
-        ttsRef.value?.let { engine ->
-            applyVoiceStyle(engine)
-            speakingMessageId = messageId
-            val params = Bundle().apply {
-                putString(TextToSpeech.Engine.KEY_PARAM_VOLUME, "1.0")
+        if (viewModel.settings.speechOutputProvider == SpeechOutputProvider.Gemini) {
+            geminiTts.play(
+                apiKey = viewModel.settings.apiKey,
+                text = text,
+                voice = viewModel.settings.geminiTtsVoice,
+                callback = object : GeminiTtsPlayer.Callback {
+                    override fun onStart() {
+                        speakingMessageId = messageId
+                    }
+
+                    override fun onComplete() {
+                        speakingMessageId = null
+                        startEnglishMicAfterReading(messageId)
+                    }
+
+                    override fun onError(message: String) {
+                        speakingMessageId = null
+                        pendingAutoMicChatId = null
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+        } else {
+            ttsRef.value?.let { engine ->
+                applyVoiceStyle(engine)
+                speakingMessageId = messageId
+                val params = Bundle().apply {
+                    putString(TextToSpeech.Engine.KEY_PARAM_VOLUME, "1.0")
+                }
+                engine.speak(text, TextToSpeech.QUEUE_FLUSH, params, messageId?.let { "msg_$it" } ?: "topic")
             }
-            engine.speak(text, TextToSpeech.QUEUE_FLUSH, params, messageId?.let { "msg_$it" } ?: "topic")
         }
     }
     val pauseSpeaking: () -> Unit = {
         ttsRef.value?.stop()
+        geminiTts.stop()
+        pendingAutoMicChatId = null
         speakingMessageId = null
     }
 
     // コーチ返信到着時の自動読み上げ(読み上げ完了でマイク起動につながる)
     androidx.compose.runtime.SideEffect {
         viewModel.coachReplyHook = { chatId, naturalReply ->
-            ttsRef.value?.let { engine ->
-                applyVoiceStyle(engine)
-                val params = Bundle().apply {
-                    putString(TextToSpeech.Engine.KEY_PARAM_VOLUME, "1.0")
-                }
-                engine.speak(naturalReply, TextToSpeech.QUEUE_FLUSH, params, "auto_$chatId")
-            }
+            pendingAutoMicChatId = if (viewModel.autoMode.startsMicAfterReading) chatId else null
+            speak(chatId, naturalReply)
         }
     }
 
@@ -292,13 +331,6 @@ private fun BYOKeySpeakApp() {
                 val target = speechTargetChatId
                 if (target != null) {
                     viewModel.appendToDraft(target, spoken)
-                    if (viewModel.autoMode == ConversationAutoMode.FullAuto) {
-                        val recognizedText = viewModel.draftOf(target)
-                        viewModel.send(target, ChatMode.Quick, recognizedText) {
-                            soundEffects?.play(AppSound.MessageSend)
-                            viewModel.clearDraft(target)
-                        }
-                    }
                 } else {
                     viewModel.appendToAssistQuestion(spoken)
                 }
@@ -340,9 +372,14 @@ private fun BYOKeySpeakApp() {
                 viewModel.completeOnboarding(finishOnboardingToSettings)
             })
         } else if (!viewModel.onboardingDone || showOnboardingReplay) {
-            OnboardingScreen(onFinish = { goToSettings ->
+            OnboardingScreen(
+                initialPage = if (showOnboardingReplay) onboardingReplayStartPage else 0,
+                requireExternalDataConsent = !viewModel.hasExternalDataConsent,
+                onFinish = { goToSettings, externalDataConsented ->
                 if (showOnboardingReplay) {
                     showOnboardingReplay = false
+                    onboardingReplayStartPage = 0
+                    if (externalDataConsented) viewModel.confirmExternalDataConsent()
                     if (goToSettings) viewModel.currentTab = MainTab.Settings
                 } else {
                     finishOnboardingToSettings = goToSettings
@@ -358,7 +395,14 @@ private fun BYOKeySpeakApp() {
                 onSpeak = speak,
                 speakingMessageId = speakingMessageId,
                 onPauseSpeaking = pauseSpeaking,
-                onReplayOnboarding = { showOnboardingReplay = true }
+                onReplayOnboarding = {
+                    onboardingReplayStartPage = 0
+                    showOnboardingReplay = true
+                },
+                onOpenConsentOnboarding = {
+                    onboardingReplayStartPage = 4
+                    showOnboardingReplay = true
+                }
             )
         }
 
@@ -370,7 +414,7 @@ private fun BYOKeySpeakApp() {
                 title = { Text("APIキーの設定が必要です", color = Grimoire.BurgundyDeep) },
                 text = {
                     Text(
-                        "会話を始めるには、お使いのLLMプロバイダーのAPIキーを設定してください。設定するまで会話は送信されません。",
+                        "会話を始めるにはGemini APIキーを設定してください。設定するまで会話は送信されません。",
                         color = Grimoire.Ink
                     )
                 },
@@ -391,29 +435,22 @@ private fun BYOKeySpeakApp() {
             )
         }
 
-        if (viewModel.showExternalDataConsent && viewModel.onboardingDone) {
+        if (viewModel.geminiOnlyMigrationNotice) {
             AlertDialog(
-                onDismissRequest = viewModel::dismissExternalDataConsent,
+                onDismissRequest = viewModel::dismissGeminiOnlyMigrationNotice,
                 containerColor = Grimoire.ParchmentLight,
-                title = { Text("外部AIへの送信について", color = Grimoire.BurgundyDeep) },
+                title = { Text("Gemini専用版へ更新しました", color = Grimoire.BurgundyDeep) },
                 text = {
                     Text(
-                        "会話、Quick Assist、翻訳、会話分析を使うと、入力した文章と必要な会話履歴が、設定したLLMプロバイダーへ送信されます。BYOKey Labは通常の会話やAPIキーを受け取りません。",
+                        "この版ではGeminiのみを利用できます。安全のため、旧版でGemini以外を選択していたAPIキーは端末から削除しました。Geminiを使う場合は設定画面でGemini APIキーを入力してください。会話履歴などの学習データはそのまま残っています。",
                         color = Grimoire.Ink
                     )
                 },
                 confirmButton = {
                     Button(
-                        onClick = viewModel::confirmExternalDataConsent,
+                        onClick = viewModel::dismissGeminiOnlyMigrationNotice,
                         colors = ButtonDefaults.buttonColors(containerColor = Grimoire.Burgundy)
-                    ) {
-                        Text("同意して続ける")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = viewModel::dismissExternalDataConsent) {
-                        Text("今は使わない", color = Grimoire.InkFaded)
-                    }
+                    ) { Text("確認しました") }
                 }
             )
         }
@@ -742,7 +779,7 @@ private fun tutorialContent(kind: AppTutorialKind): TutorialContent = when (kind
         steps = listOf(
             TutorialStep(
                 "ヘッドフォン",
-                "タップするたびに通常、マニュアル送信、フルオートへ切り替わります。マニュアル送信では読み上げ後にマイクが起動し、フルオートでは音声入力後の送信まで自動で行います。",
+                "通常と「読み上げ&マイクオート」を切り替えます。オンにすると、コーチの返信を読み上げたあとに英語マイクが自動で起動します。音声入力の送信は手動です。",
                 TutorialTargets.CHAT_AUTO_MODE
             ),
             TutorialStep(
@@ -771,7 +808,7 @@ private fun tutorialContent(kind: AppTutorialKind): TutorialContent = when (kind
     )
     AppTutorialKind.Progress -> TutorialContent(
         steps = listOf(
-            TutorialStep("Conversation Analysis", "会話の履歴が溜まりました。Progress画面から、自分の話し方の特徴や多い失敗を分析できます。"),
+            TutorialStep("Conversation Analysis", "会話の履歴が溜まると、Progress画面から、自分の話し方の特徴や多い失敗を分析できます。"),
             TutorialStep("Practice", "分析結果はカードで保存されます。詳細から、苦手な表現を練習する会話も始められます。")
         )
     )
@@ -816,7 +853,8 @@ private fun MainScaffold(
     onSpeak: (Long?, String) -> Unit,
     speakingMessageId: Long?,
     onPauseSpeaking: () -> Unit,
-    onReplayOnboarding: () -> Unit
+    onReplayOnboarding: () -> Unit,
+    onOpenConsentOnboarding: () -> Unit
 ) {
     val density = LocalDensity.current
     val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
@@ -903,6 +941,31 @@ private fun MainScaffold(
                     .padding(padding)
                     .fillMaxSize()
             ) {
+                if (viewModel.showExternalDataConsent) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .grimoireBorder(10.dp),
+                        color = Grimoire.ParchmentLight,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "利用前に案内文の同意を確認してください。",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Grimoire.Ink
+                            )
+                            TextButton(onClick = onOpenConsentOnboarding) {
+                                Text("案内文を開く", color = Grimoire.Burgundy)
+                            }
+                        }
+                    }
+                }
                 when (viewModel.currentTab) {
                     MainTab.Chats -> ChatsScreen(
                         viewModel = viewModel,

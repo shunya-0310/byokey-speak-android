@@ -14,16 +14,15 @@ features require a user-provided LLM API key.
 Review access:
 1. Launch the app and complete the onboarding screens.
 2. On the final onboarding screen, check the consent box for sending conversation
-   data to the selected LLM provider.
+   data to Google Gemini.
 3. Open Settings > System settings.
-4. Select Gemini.
-5. Enter the reusable review API key provided below.
-6. Select the recommended Gemini model shown in the app.
-7. Tap "Test connection", then tap "Save settings".
-8. Open Chats > New Chat and send a short English or Japanese message.
-9. The sparkle icon opens Quick Assist. The globe icon enables a current-topic
+4. Enter the reusable review API key provided below.
+5. Select the recommended Gemini model shown in the app.
+6. Tap "Test connection", then tap "Save settings".
+7. Open Chats > New Chat and send a short English or Japanese message.
+8. The sparkle icon opens Quick Assist. The globe icon enables a current-topic
    conversation. The flag icon on each AI reply opens the in-app content report flow.
-10. Settings > Backup / Restore can export an encrypted backup. API keys are never
+9. Settings > Backup / Restore can export an encrypted backup. API keys are never
     included in backup files.
 
 Review API key:

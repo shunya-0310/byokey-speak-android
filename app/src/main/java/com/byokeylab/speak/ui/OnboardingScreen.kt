@@ -87,64 +87,56 @@ private data class OnboardingSection(
 private val pages = listOf(
     OnboardingPage(
         title = "BYOKey Speakへようこそ",
-        lead = "アプリを購入いただきどうもありがとうございます。会話を始めるにあたって、まずは本アプリの特徴と注意点を説明します。",
+        lead = "Geminiを使って、自分だけのコーチとの英会話を通じて英語を学習するAI英会話アプリです。",
         sections = listOf(
-            OnboardingSection("アプリ代金", "月額料金はありません。アプリ本体は買い切りです。", accent = true),
-            OnboardingSection("API利用料", "本アプリはAPIという機能を使ってAIと会話する仕組みです。会話の量に応じて「API利用料」という形で費用が発生します。"),
-            OnboardingSection("APIとは？", "APIは、本アプリとAIサービスをつなぐ窓口です。入力した内容をAIへ送り、その返答をアプリで受け取るために使います。"),
-            OnboardingSection("目安", "推奨モデルのGemini 3.1 Flash-Liteでも、普通に使うと月数百円程度になることがあります。会話が多い月は1,000円前後以上になる可能性もあります。")
+            OnboardingSection("自由に設定できるコーチ", "コーチの性格や話し方をあなたの言葉で設定できます。学習の方針やコーチに知っておいてもらいたいことなど、あなたの言葉で伝えてみてください。", accent = true),
+            OnboardingSection("会話レベル", "CEFR A1からC2まで対応しています。自分に合った会話のレベルをいつでも選べます。"),
+            OnboardingSection("学習の記録", "会話で使った表現はVocabulary Listに反映されていきます。また、会話の履歴からあなたの特徴を分析し、学習に役立てることができます。※本アプリでは音声の分析はできません。")
         ),
         backgroundImage = R.drawable.onboarding_bg_1
     ),
     OnboardingPage(
         title = "BYOKの仕組みとAPIキー",
-        lead = "BYOK(Bring Your Own Key)は、あなた自身が取得したAPIキーをアプリに設定して使う方式です。",
+        lead = "BYOKはBring Your Own Keyの略です。自分のGemini APIキーを使って会話します。",
         sections = listOf(
-            OnboardingSection("設定するもの", "Gemini・OpenAI・Claudeのいずれかで、APIキーを取得して設定してください。"),
-            OnboardingSection("APIキー設定ガイド", "利用するAIサービスに合わせて、下のガイドを開いてください。"),
-            OnboardingSection("BYOKアプリの仕組み", "アプリ代金、API利用料、APIキーやデータの流れを図で確認できます。")
+            OnboardingSection("APIキーとは", "Geminiを使うための大切な合鍵です。GoogleアカウントがあればGoogle AI Studioで作成できます。"),
+            OnboardingSection("料金", "Geminiの利用量に応じてGoogleに対して費用が発生します。会話の回数だけでなく、文章の量や分析の頻度が影響するため、都度Google AI Studioのダッシュボードで料金の確認をしてください。また、事前に上限を設定してください。", accent = true),
+            OnboardingSection("確認のしかた", "利用料はGoogle AI Studioで随時確認してください。APIキーの取得方法はアプリ内ヘルプで確認できます。")
         ),
         backgroundImage = R.drawable.onboarding_bg_2,
         showApiGuides = true,
-        showByokDiagram = true
+        showByokDiagram = false
     ),
     OnboardingPage(
-        title = "API利用の注意点",
-        lead = "APIキーは、クレジットカードやパスワードに近い注意が必要な情報です。",
+        title = "APIキーを安全に使うために",
+        lead = "APIキーはGeminiの利用権限に結びつく大切な情報です。",
         sections = listOf(
+            OnboardingSection("重要な注意事項", "Googleは、アプリへAPIキーを入力して使う構成を一般には推奨していません。本アプリは、このリスクを理解した利用者が自分のキーを自分の責任で設定するBYOK方式です。", accent = true),
+            OnboardingSection("安全に使うための4つのポイント", "本アプリ専用のAPIキーを作る・利用上限を設定する・利用量を定期的に確認する・APIキーを定期的に更新することをおすすめします。"),
             OnboardingSection(
-                label = "料金",
-                body = "API利用料はアプリ代金とは別に、各プロバイダー（Google、OpenAIなど）へ支払います。料金は会話履歴、AIの思考トークン、利用回数に応じて変わります。",
-                linkLabel = "料金シミュレーションを開く（BYOKey Labサイト）",
-                linkUrl = AppLinks.PRICING_SIMULATOR
-            ),
-            OnboardingSection("予算管理", "各プロバイダーの管理画面で、利用上限や予算アラートを必ず設定してください。"),
-            OnboardingSection(
-                "APIキーの取り扱いについて",
-                "LLMプロバイダ各社の安全ガイドライン上、モバイルアプリへのAPIキー入力は推奨されていません。本アプリを利用する場合は、このセキュリティリスクを十分に理解し、必ず利用上限を設定したうえで、APIキーを慎重に取り扱ってください。APIキーは他人と共有せず、スクリーンショット、画面共有、ログ、Git、Drive、問い合わせ本文などにも含めないでください。",
-                accent = true
+                "大切なお願い",
+                "APIキーを他人と共有しないでください。スクリーンショット、画面共有のほか、問い合わせ本文にも含めないでください。"
             )
         ),
         backgroundImage = R.drawable.onboarding_bg_3
     ),
     OnboardingPage(
         title = "データの扱い",
-        lead = "APIキーと会話内容は、ユーザーとLLMプロバイダーだけが扱う情報です。",
+        lead = "あなたのAPIキーや会話データを、BYOKey Labが受け取ることはありません。",
         sections = listOf(
-            OnboardingSection("APIキーを開発側が聞くことはありません。", "BYOKey Labのサーバーに、APIキー・会話・ユーザー情報を保存することはありません。"),
-            OnboardingSection("本アプリが買い切りである理由", "APIキーを安全に扱い、開発側がユーザー情報を持たない設計にするため、本アプリは買い切り型にしています。", accent = true),
-            OnboardingSection("端末内保存", "会話・Vocabulary List・APIキーはこの端末の中に保存され、いつでも削除できます。")
+            OnboardingSection("Geminiへ直接送信", "会話や設定したコーチ情報は、この端末からGemini APIへ直接送信されます。BYOKey Labのサーバーは経由しません。", accent = true),
+            OnboardingSection("開発側では保存・把握しません", "BYOKey LabはAPIキーを取得・保存・問い合わせることはありません。アプリのソースコードはGitHubで公開し、通信とデータの扱いを確認できるようにしています。"),
+            OnboardingSection("端末内のデータ", "会話履歴、Vocabulary List、設定は端末内に保存されます。バックアップと復元はアプリ内で行えます。アプリのアンインストールやアプリデータ／キャッシュの消去で、保存データが削除される場合があります。")
         ),
         backgroundImage = R.drawable.onboarding_bg_4
     ),
     OnboardingPage(
-        title = "始めましょう",
-        lead = "APIキーを設定すると、すぐに会話を始められます。",
+        title = "さあ、はじめましょう",
+        lead = "設定画面からGeminiモデル、APIキー、会話レベル、コーチの性格を設定しましょう。",
         sections = listOf(
-            OnboardingSection("はじめにAPIキーを設定", "設定画面でモデルを選び、APIキーを入力します。"),
-            OnboardingSection("会話設定", "CEFRレベル、コーチの性格、解説の詳しさや要否は、設定画面からいつでも自由に変更できます。※なお、回答の癖はモデルに依存することもあります。設定を細かく調整してみると新たな発見があるかも…!"),
-            OnboardingSection("会話のヒント", "相手はAIなので、言葉に迷ったときは途中で日本語を混ぜても大丈夫です。Quick Assistを使えば、言葉に詰まっても表現の候補を見ながら会話を続けられます。"),
-            OnboardingSection("あとで設定", "設定は後回しにしてもOKです。最初の送信前に設定画面へご案内します。")
+            OnboardingSection("設定はいつでも変更できます", "会話を始めたあとでも、レベルやコーチの設定は自由に変えられます。"),
+            OnboardingSection("外部送信と利用料", "会話内容はGeminiへ送信されます。Gemini音声を選ぶ場合は、読み上げる返信文もGeminiへ送信され、API利用料が発生します。", accent = true),
+            OnboardingSection("対象年齢", "Gemini APIの利用条件により、本アプリは18歳以上の方を対象とします。")
         ),
         backgroundImage = R.drawable.onboarding_bg_5
     )
@@ -155,16 +147,22 @@ private val pages = listOf(
  */
 @Composable
 fun OnboardingScreen(
-    onFinish: (goToSettings: Boolean) -> Unit
+    initialPage: Int = 0,
+    requireExternalDataConsent: Boolean = true,
+    onFinish: (goToSettings: Boolean, externalDataConsented: Boolean) -> Unit
 ) {
-    var pageIndex by rememberSaveable { mutableIntStateOf(0) }
+    var pageIndex by rememberSaveable(initialPage) {
+        mutableIntStateOf(initialPage.coerceIn(0, pages.lastIndex))
+    }
     var transitionProgress by remember { mutableFloatStateOf(0f) }
     var transitionDelta by remember { mutableIntStateOf(0) }
     var dragDistance by remember { mutableFloatStateOf(0f) }
     var cardWidth by remember { mutableFloatStateOf(1f) }
     var cardHeight by remember { mutableFloatStateOf(1f) }
     var isAnimating by remember { mutableStateOf(false) }
-    var externalDataConsent by rememberSaveable { mutableStateOf(false) }
+    var externalDataConsent by rememberSaveable(requireExternalDataConsent) {
+        mutableStateOf(!requireExternalDataConsent)
+    }
     val scope = rememberCoroutineScope()
     val soundEffects = LocalAppSoundEffects.current
     val uriHandler = LocalUriHandler.current
@@ -329,14 +327,14 @@ fun OnboardingScreen(
                     onCheckedChange = { externalDataConsent = it }
                 )
                 Text(
-                    text = "会話内容・コーチ設定・分析対象の文章が、選択したLLMプロバイダーへ送信されることに同意します。",
+                    text = "私は18歳以上であり、会話内容・コーチ設定・分析対象の文章がGeminiへ送信されること、ならびに上記のAPIキーに関するリスクを理解しました。",
                     style = MaterialTheme.typography.bodySmall,
                     color = Grimoire.Ink,
                     modifier = Modifier.weight(1f)
                 )
             }
             Button(
-                onClick = { onFinish(true) },
+                onClick = { onFinish(true, externalDataConsent) },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = externalDataConsent,
                 colors = ButtonDefaults.buttonColors(containerColor = Grimoire.Burgundy)
@@ -344,7 +342,7 @@ fun OnboardingScreen(
                 Text("APIキーを設定する")
             }
             TextButton(
-                onClick = { onFinish(false) },
+                onClick = { onFinish(false, externalDataConsent) },
                 enabled = externalDataConsent
             ) {
                 Text("あとで設定する", color = Grimoire.InkFaded)

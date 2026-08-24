@@ -49,11 +49,8 @@ class LlmClient {
             throw LlmException(LlmErrorKind.MissingApiKey, LlmErrorKind.MissingApiKey.userMessage)
         }
         return withContext(Dispatchers.IO) {
-            when (provider) {
-                LlmProvider.Gemini -> generateWithGemini(apiKey, model, prompt, enableWebSearch)
-                LlmProvider.OpenAI -> generateWithOpenAi(apiKey, model, prompt, enableWebSearch)
-                LlmProvider.Anthropic -> generateWithAnthropic(apiKey, model, prompt, enableWebSearch)
-            }
+            // Gemini専用版。保存済み設定はAppStorageでGeminiへ正規化済み。
+            generateWithGemini(apiKey, model, prompt, enableWebSearch)
         }
     }
 
@@ -114,103 +111,6 @@ class LlmClient {
         return LlmResult(text, sources, enableWebSearch, sources.isNotEmpty())
     }
 
-    private fun generateWithOpenAi(
-        apiKey: String,
-        model: String,
-        prompt: String,
-        enableWebSearch: Boolean
-    ): LlmResult {
-        val bodyJson = JSONObject()
-            .put("model", model.trim().ifBlank { LlmProvider.OpenAI.defaultModel })
-            .put("input", prompt)
-            .put("store", false)
-        if (enableWebSearch) {
-            bodyJson
-                .put(
-                    "tools",
-                    JSONArray().put(
-                        JSONObject()
-                            .put("type", "web_search")
-                            .put("search_context_size", "low")
-                    )
-                )
-                .put("tool_choice", "auto")
-                .put(
-                    "include",
-                    JSONArray().put("web_search_call.action.sources")
-                )
-        }
-        val body = bodyJson
-            .toString()
-            .toRequestBody(JSON)
-
-        val request = Request.Builder()
-            .url("https://api.openai.com/v1/responses")
-            .addHeader("Authorization", "Bearer $apiKey")
-            .addHeader("Content-Type", "application/json")
-            .post(body)
-            .build()
-
-        val response = execute(request, LlmProvider.OpenAI)
-        val text = response.optString("output_text").takeIf { it.isNotBlank() }
-            ?: collectTexts(response.optJSONArray("output"))
-            .ifBlank { throw LlmException(LlmErrorKind.Provider, "OpenAI returned no text.") }
-        val sources = collectSources(response)
-        return LlmResult(
-            text = text,
-            sources = sources,
-            searchAttempted = enableWebSearch,
-            searchUsed = sources.isNotEmpty() || containsType(response, "web_search_call")
-        )
-    }
-
-    private fun generateWithAnthropic(
-        apiKey: String,
-        model: String,
-        prompt: String,
-        enableWebSearch: Boolean
-    ): LlmResult {
-        val bodyJson = JSONObject()
-            .put("model", model.trim().ifBlank { LlmProvider.Anthropic.defaultModel })
-            .put("max_tokens", 1200)
-            .put(
-                "messages",
-                JSONArray().put(JSONObject().put("role", "user").put("content", prompt))
-            )
-        if (enableWebSearch) {
-            bodyJson.put(
-                "tools",
-                JSONArray().put(
-                    JSONObject()
-                        .put("type", "web_search_20250305")
-                        .put("name", "web_search")
-                        .put("max_uses", 2)
-                )
-            )
-        }
-        val body = bodyJson
-            .toString()
-            .toRequestBody(JSON)
-
-        val request = Request.Builder()
-            .url("https://api.anthropic.com/v1/messages")
-            .addHeader("x-api-key", apiKey)
-            .addHeader("anthropic-version", "2023-06-01")
-            .addHeader("Content-Type", "application/json")
-            .post(body)
-            .build()
-
-        val response = execute(request, LlmProvider.Anthropic)
-        val text = collectTexts(response.optJSONArray("content"))
-            .ifBlank { throw LlmException(LlmErrorKind.Provider, "Claude returned no text.") }
-        val sources = collectSources(response)
-        return LlmResult(
-            text = text,
-            sources = sources,
-            searchAttempted = enableWebSearch,
-            searchUsed = sources.isNotEmpty() || containsType(response, "web_search")
-        )
-    }
 
     private fun execute(request: Request, provider: LlmProvider): JSONObject {
         val response = try {
@@ -289,17 +189,6 @@ class LlmClient {
             .firstOrNull { it.isNotBlank() }
             .orEmpty()
         output.putIfAbsent(url, LlmSource(title, url))
-    }
-
-    private fun containsType(value: Any?, expected: String): Boolean {
-        return when (value) {
-            is JSONObject -> {
-                value.optString("type").contains(expected, ignoreCase = true) ||
-                    value.keys().asSequence().any { containsType(value.opt(it), expected) }
-            }
-            is JSONArray -> (0 until value.length()).any { containsType(value.opt(it), expected) }
-            else -> false
-        }
     }
 
     companion object {

@@ -299,16 +299,12 @@ object NewsConversation {
     }
 
     fun visibleOpener(item: DailyNewsItem, coachInstructions: String): String {
-        val sources = item.sources.joinToString("\n") { "${it.title}\n${it.url}" }
         return """
             ${CoachNewsTone.opener(item, coachInstructions)}
 
             ${item.summary}
 
             ${item.question}
-
-            Sources:
-            $sources
         """.trimIndent()
     }
 

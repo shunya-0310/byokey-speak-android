@@ -12,13 +12,33 @@ class AppStorage(context: Context) {
     private val prefs = context.getSharedPreferences("byokey_speak", Context.MODE_PRIVATE)
     private val secureApiKeyStore = SecureApiKeyStore(context)
 
+    init {
+        migrateToGeminiOnlyIfNeeded()
+    }
+
+    /**
+     * 旧版は一つの暗号化領域へ全providerのキーを保存していた。
+     * OpenAI/ClaudeキーをGemini APIへ誤送信しないよう、enumを読む前に生の旧値で判定する。
+     */
+    private fun migrateToGeminiOnlyIfNeeded() {
+        if (prefs.getInt(KEY_GEMINI_ONLY_MIGRATION_VERSION, 0) >= GEMINI_ONLY_MIGRATION_VERSION) return
+        val legacyProvider = prefs.getString(KEY_PROVIDER, LlmProvider.Gemini.name)
+        val removedNonGeminiKey = legacyProvider != null && legacyProvider != LlmProvider.Gemini.name
+        if (removedNonGeminiKey) secureApiKeyStore.clear()
+        val storedModel = prefs.getString(KEY_MODEL, DEFAULT_MODEL).orEmpty()
+        prefs.edit()
+            .putString(KEY_PROVIDER, LlmProvider.Gemini.name)
+            .putString(KEY_MODEL, normalizedGeminiModel(storedModel))
+            .putBoolean(KEY_GEMINI_ONLY_KEY_REMOVED_NOTICE, removedNonGeminiKey)
+            .putInt(KEY_GEMINI_ONLY_MIGRATION_VERSION, GEMINI_ONLY_MIGRATION_VERSION)
+            .apply()
+    }
+
     fun loadSettings(): AppSettings {
         return AppSettings(
-            provider = runCatching {
-                LlmProvider.valueOf(prefs.getString(KEY_PROVIDER, LlmProvider.Gemini.name) ?: LlmProvider.Gemini.name)
-            }.getOrDefault(LlmProvider.Gemini),
+            provider = LlmProvider.Gemini,
             apiKey = secureApiKeyStore.load(),
-            model = prefs.getString(KEY_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL,
+            model = normalizedGeminiModel(prefs.getString(KEY_MODEL, DEFAULT_MODEL).orEmpty()),
             dailyReminderEnabled = prefs.getBoolean(KEY_REMINDER_ENABLED, true),
             reminderHour = prefs.getInt(KEY_REMINDER_HOUR, ReminderScheduler.DEFAULT_NEWS_HOUR),
             reminderMinute = prefs.getInt(KEY_REMINDER_MINUTE, ReminderScheduler.DEFAULT_NEWS_MINUTE),
@@ -31,11 +51,17 @@ class AppStorage(context: Context) {
                     ?: DEFAULT_COACH_INSTRUCTIONS
             ),
             theme = runCatching {
-                AppTheme.valueOf(prefs.getString(KEY_THEME, AppTheme.Dark.name) ?: AppTheme.Dark.name)
-            }.getOrDefault(AppTheme.Dark),
+                AppTheme.valueOf(prefs.getString(KEY_THEME, AppTheme.Light.name) ?: AppTheme.Light.name)
+            }.getOrDefault(AppTheme.Light),
             voiceGender = runCatching {
                 VoiceGender.valueOf(prefs.getString(KEY_VOICE, VoiceGender.Female.name) ?: VoiceGender.Female.name)
             }.getOrDefault(VoiceGender.Female),
+            speechOutputProvider = runCatching {
+                SpeechOutputProvider.valueOf(prefs.getString(KEY_SPEECH_OUTPUT, SpeechOutputProvider.Device.name) ?: SpeechOutputProvider.Device.name)
+            }.getOrDefault(SpeechOutputProvider.Device),
+            geminiTtsVoice = runCatching {
+                GeminiTtsVoice.valueOf(prefs.getString(KEY_GEMINI_TTS_VOICE, GeminiTtsVoice.Kore.name) ?: GeminiTtsVoice.Kore.name)
+            }.getOrDefault(GeminiTtsVoice.Kore),
             soundEffectsEnabled = prefs.getBoolean(KEY_SOUND_EFFECTS_ENABLED, true)
         )
     }
@@ -48,8 +74,8 @@ class AppStorage(context: Context) {
     fun saveSettings(settings: AppSettings) {
         secureApiKeyStore.save(settings.apiKey)
         prefs.edit()
-            .putString(KEY_PROVIDER, settings.provider.name)
-            .putString(KEY_MODEL, settings.model.trim().ifBlank { settings.provider.defaultModel })
+            .putString(KEY_PROVIDER, LlmProvider.Gemini.name)
+            .putString(KEY_MODEL, normalizedGeminiModel(settings.model))
             .putBoolean(KEY_REMINDER_ENABLED, settings.dailyReminderEnabled)
             .putInt(KEY_REMINDER_HOUR, ReminderScheduler.DEFAULT_NEWS_HOUR)
             .putInt(KEY_REMINDER_MINUTE, ReminderScheduler.DEFAULT_NEWS_MINUTE)
@@ -57,6 +83,8 @@ class AppStorage(context: Context) {
             .putString(KEY_COACH_INSTRUCTIONS, settings.coachInstructions.trim().ifBlank { DEFAULT_COACH_INSTRUCTIONS })
             .putString(KEY_THEME, settings.theme.name)
             .putString(KEY_VOICE, settings.voiceGender.name)
+            .putString(KEY_SPEECH_OUTPUT, settings.speechOutputProvider.name)
+            .putString(KEY_GEMINI_TTS_VOICE, settings.geminiTtsVoice.name)
             .putBoolean(KEY_SOUND_EFFECTS_ENABLED, settings.soundEffectsEnabled)
             .apply()
     }
@@ -68,7 +96,6 @@ class AppStorage(context: Context) {
     fun exportPortableSettings(): PortableSettings {
         val current = loadSettings()
         return PortableSettings(
-            provider = current.provider.name,
             model = current.model,
             dailyReminderEnabled = current.dailyReminderEnabled,
             reminderHour = ReminderScheduler.DEFAULT_NEWS_HOUR,
@@ -77,27 +104,31 @@ class AppStorage(context: Context) {
             coachInstructions = current.coachInstructions,
             theme = current.theme.name,
             voiceGender = current.voiceGender.name,
+            speechOutputProvider = current.speechOutputProvider.name,
+            geminiTtsVoice = current.geminiTtsVoice.name,
             soundEffectsEnabled = current.soundEffectsEnabled
         )
     }
 
     fun validatePortableSettings(restored: PortableSettings): AppSettings {
         val currentApiKey = secureApiKeyStore.load()
-        val provider = runCatching { LlmProvider.valueOf(restored.provider) }
-            .getOrElse { throw IllegalArgumentException("LLMプロバイダー設定が不正です。") }
         val level = runCatching { EnglishLevel.valueOf(restored.englishLevel) }
             .getOrElse { throw IllegalArgumentException("CEFR設定が不正です。") }
         val theme = runCatching { AppTheme.valueOf(restored.theme) }
             .getOrElse { throw IllegalArgumentException("テーマ設定が不正です。") }
         val voice = runCatching { VoiceGender.valueOf(restored.voiceGender) }
             .getOrElse { throw IllegalArgumentException("音声設定が不正です。") }
+        val speechOutputProvider = runCatching { SpeechOutputProvider.valueOf(restored.speechOutputProvider) }
+            .getOrDefault(SpeechOutputProvider.Device)
+        val geminiTtsVoice = runCatching { GeminiTtsVoice.valueOf(restored.geminiTtsVoice) }
+            .getOrDefault(GeminiTtsVoice.Kore)
         require(restored.reminderHour in 0..23 && restored.reminderMinute in 0..59) {
             "通知時刻の設定が不正です。"
         }
         return AppSettings(
-            provider = provider,
+            provider = LlmProvider.Gemini,
             apiKey = currentApiKey,
-            model = restored.model.trim().ifBlank { provider.defaultModel },
+            model = normalizedGeminiModel(restored.model),
             dailyReminderEnabled = restored.dailyReminderEnabled,
             reminderHour = ReminderScheduler.DEFAULT_NEWS_HOUR,
             reminderMinute = ReminderScheduler.DEFAULT_NEWS_MINUTE,
@@ -106,9 +137,20 @@ class AppStorage(context: Context) {
                 .ifBlank { DEFAULT_COACH_INSTRUCTIONS },
             theme = theme,
             voiceGender = voice,
+            speechOutputProvider = speechOutputProvider,
+            geminiTtsVoice = geminiTtsVoice,
             soundEffectsEnabled = restored.soundEffectsEnabled
         )
     }
+
+    fun consumeGeminiOnlyKeyRemovedNotice(): Boolean {
+        if (!prefs.getBoolean(KEY_GEMINI_ONLY_KEY_REMOVED_NOTICE, false)) return false
+        prefs.edit().putBoolean(KEY_GEMINI_ONLY_KEY_REMOVED_NOTICE, false).apply()
+        return true
+    }
+
+    private fun normalizedGeminiModel(value: String): String =
+        LlmProvider.Gemini.modelOptions.firstOrNull { it.id == value.trim() }?.id ?: DEFAULT_MODEL
 
     // --- Onboarding / ナビゲーション状態 ---
 
@@ -268,6 +310,11 @@ class AppStorage(context: Context) {
         private const val KEY_THEME = "app_theme"
         private const val KEY_VOICE = "voice_gender"
         private const val KEY_SOUND_EFFECTS_ENABLED = "sound_effects_enabled"
+        private const val KEY_SPEECH_OUTPUT = "speech_output_provider"
+        private const val KEY_GEMINI_TTS_VOICE = "gemini_tts_voice"
+        private const val KEY_GEMINI_ONLY_MIGRATION_VERSION = "gemini_only_migration_version"
+        private const val KEY_GEMINI_ONLY_KEY_REMOVED_NOTICE = "gemini_only_key_removed_notice"
+        private const val GEMINI_ONLY_MIGRATION_VERSION = 1
         private const val KEY_ONBOARDING_DONE = "onboarding_done"
         private const val KEY_LAST_QUICK_CHAT = "last_quick_chat_id"
         private const val KEY_LEGACY_IMPORTED = "legacy_imported"
@@ -275,7 +322,7 @@ class AppStorage(context: Context) {
         private const val KEY_FEEDBACK_PROMPT_SHOWN = "analysis_feedback_prompt_shown"
         private const val KEY_EXTERNAL_DATA_CONSENT_VERSION = "external_data_consent_version"
         private const val KEY_EXTERNAL_DATA_CONSENT_AT = "external_data_consent_at"
-        private const val EXTERNAL_DATA_CONSENT_VERSION = 1
+        private const val EXTERNAL_DATA_CONSENT_VERSION = 2
         private const val KEY_TUTORIAL_CHATS_SEEN = "tutorial_chats_seen"
         private const val KEY_TUTORIAL_CHAT_CONTROLS_SEEN = "tutorial_chat_controls_seen"
         private const val KEY_TUTORIAL_VOCABULARY_SEEN = "tutorial_vocabulary_seen"
