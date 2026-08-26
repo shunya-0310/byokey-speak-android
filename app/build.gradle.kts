@@ -36,8 +36,8 @@ android {
         applicationId = "com.byokeylab.speak"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.2.1"
+        versionCode = 11
+        versionName = "0.2.2"
         buildConfigField(
             "String",
             "AI_REPORT_ENDPOINT",
@@ -98,12 +98,15 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.fragment:fragment:1.9.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.room:room-ktx:2.6.1")
     implementation("androidx.room:room-runtime:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("com.google.android.play:app-update:2.1.0")
+    implementation("com.google.android.play:app-update-ktx:2.1.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

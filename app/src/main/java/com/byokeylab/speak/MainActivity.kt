@@ -15,6 +15,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
@@ -101,6 +103,13 @@ import com.byokeylab.speak.data.ChatMode
 import com.byokeylab.speak.ui.ReviewScreen
 import com.byokeylab.speak.ui.SettingsScreen
 import com.byokeylab.speak.ui.SplashScreen
+import com.google.android.play.core.appupdate.AppUpdateManager
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.install.InstallStateUpdatedListener
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.InstallStatus
+import com.google.android.play.core.install.model.UpdateAvailability
 import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -108,8 +117,27 @@ import kotlin.math.roundToInt
 private const val AUTO_MIC_START_DELAY_MS = 350L
 
 class MainActivity : ComponentActivity() {
+    private lateinit var appUpdateManager: AppUpdateManager
+    private lateinit var updateFlowLauncher: ActivityResultLauncher<IntentSenderRequest>
+    private var updateFlowStarted = false
+    private var updateReadyToInstall by mutableStateOf(false)
+    private val updateStateListener = InstallStateUpdatedListener { state ->
+        if (state.installStatus() == InstallStatus.DOWNLOADED) {
+            runOnUiThread { updateReadyToInstall = true }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        appUpdateManager = AppUpdateManagerFactory.create(this)
+        appUpdateManager.registerListener(updateStateListener)
+        updateFlowLauncher = registerForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult()
+        ) {
+            // キャンセルまたは失敗した場合も、この起動中には再表示しない。
+            // 次回起動時にPlayの状態をあらためて確認する。
+        }
 
         val notificationPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
@@ -134,9 +162,54 @@ class MainActivity : ComponentActivity() {
                         showSplash = false
                     })
                 } else {
-                    BYOKeySpeakApp()
+                    BYOKeySpeakApp(
+                        updateReadyToInstall = updateReadyToInstall,
+                        onInstallDownloadedUpdate = ::installDownloadedUpdate,
+                        onDismissDownloadedUpdate = { updateReadyToInstall = false }
+                    )
                 }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        checkForFlexibleUpdate()
+    }
+
+    override fun onDestroy() {
+        if (::appUpdateManager.isInitialized) {
+            appUpdateManager.unregisterListener(updateStateListener)
+        }
+        super.onDestroy()
+    }
+
+    private fun checkForFlexibleUpdate() {
+        if (updateFlowStarted) return
+
+        appUpdateManager.appUpdateInfo.addOnSuccessListener { info ->
+            when {
+                info.installStatus() == InstallStatus.DOWNLOADED -> {
+                    updateReadyToInstall = true
+                }
+
+                info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
+                    info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE) -> {
+                    updateFlowStarted = true
+                    appUpdateManager.startUpdateFlowForResult(
+                        info,
+                        updateFlowLauncher,
+                        AppUpdateOptions.newBuilder(AppUpdateType.FLEXIBLE).build()
+                    )
+                }
+            }
+        }
+    }
+
+    private fun installDownloadedUpdate() {
+        updateReadyToInstall = false
+        appUpdateManager.completeUpdate().addOnFailureListener {
+            updateReadyToInstall = true
         }
     }
 
@@ -147,7 +220,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun BYOKeySpeakApp() {
+private fun BYOKeySpeakApp(
+    updateReadyToInstall: Boolean,
+    onInstallDownloadedUpdate: () -> Unit,
+    onDismissDownloadedUpdate: () -> Unit
+) {
     val context = LocalContext.current
     val viewModel: AppViewModel = viewModel()
     val soundEffects = LocalAppSoundEffects.current
@@ -477,6 +554,30 @@ private fun BYOKeySpeakApp() {
         ) {
             FeedbackPrompt(
                 onDismiss = viewModel::dismissFeedbackPrompt
+            )
+        }
+        if (updateReadyToInstall) {
+            AlertDialog(
+                onDismissRequest = onDismissDownloadedUpdate,
+                containerColor = Grimoire.ParchmentLight,
+                title = { Text("更新をインストールできます", color = Grimoire.BurgundyDeep) },
+                text = {
+                    Text(
+                        "更新のダウンロードが完了しました。アプリを再起動して更新を適用しますか？",
+                        color = Grimoire.Ink
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = onInstallDownloadedUpdate,
+                        colors = ButtonDefaults.buttonColors(containerColor = Grimoire.Burgundy)
+                    ) { Text("再起動して適用") }
+                },
+                dismissButton = {
+                    TextButton(onClick = onDismissDownloadedUpdate) {
+                        Text("あとで", color = Grimoire.InkFaded)
+                    }
+                }
             )
         }
         }

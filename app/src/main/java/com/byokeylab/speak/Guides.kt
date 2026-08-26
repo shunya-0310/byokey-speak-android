@@ -15,7 +15,8 @@ object Guides {
         /** nullなら準備中 */
         val assetPath: String?,
         val platformLabel: String? = null,
-        val platformUrl: String? = null
+        val platformUrl: String? = null,
+        val platformHint: String? = null
     )
 
     val all = listOf(
@@ -24,7 +25,8 @@ object Guides {
             "APIキー設定ガイド(Gemini)",
             "guides/api_guide_gemini.pdf",
             "Google AI Studio",
-            "https://aistudio.google.com/app/apikey"
+            "https://aistudio.google.com/app/apikey",
+            "利用料の確認もこちらから"
         )
     )
 

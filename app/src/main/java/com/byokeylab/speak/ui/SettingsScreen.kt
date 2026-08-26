@@ -666,7 +666,10 @@ fun SettingsScreen(
                                     modifier = Modifier.padding(start = 24.dp)
                                 ) {
                                     Text(
-                                        text = "↳ 公式: ${guide.platformLabel}を開く",
+                                        text = buildString {
+                                            append("↳ 公式: ${guide.platformLabel}を開く")
+                                            guide.platformHint?.let { append("（$it）") }
+                                        },
                                         color = Grimoire.GoldDark
                                     )
                                 }
