@@ -426,11 +426,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // --- Quick Assist (FR-005) ---
 
     fun openQuickAssist(chatId: Long) {
-        quickAssist = QuickAssistUiState(visibleFor = chatId)
+        // PWA版と同様に、閉じた直前の相談内容と候補を再表示する。
+        quickAssist = quickAssist.copy(visibleFor = chatId)
     }
 
     fun closeQuickAssist() {
-        quickAssist = QuickAssistUiState()
+        quickAssist = quickAssist.copy(visibleFor = null)
+    }
+
+    /** ＋操作でのみ、直前のQuick Assist相談を明示的に初期化する。 */
+    fun startNewQuickAssist(chatId: Long) {
+        quickAssist = QuickAssistUiState(visibleFor = chatId)
     }
 
     fun updateAssistQuestion(text: String) {

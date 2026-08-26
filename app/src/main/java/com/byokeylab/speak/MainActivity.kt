@@ -66,6 +66,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -103,6 +104,8 @@ import com.byokeylab.speak.ui.SplashScreen
 import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
+
+private const val AUTO_MIC_START_DELAY_MS = 350L
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -187,8 +190,25 @@ private fun BYOKeySpeakApp() {
     val geminiTts = remember(context) { GeminiTtsPlayer(context) }
     var speakingMessageId by rememberSaveable { mutableStateOf<Long?>(null) }
     var pendingAutoMicChatId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var autoMicLaunchGeneration by remember { mutableLongStateOf(0L) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val startMicRef = remember { mutableStateOf<((Long) -> Unit)?>(null) }
+    val scheduleEnglishMicAfterReading: (Long?) -> Unit = { chatId ->
+        if (chatId != null && pendingAutoMicChatId == chatId && viewModel.autoMode.startsMicAfterReading) {
+            val generation = autoMicLaunchGeneration + 1
+            autoMicLaunchGeneration = generation
+            mainHandler.postDelayed({
+                if (
+                    autoMicLaunchGeneration == generation &&
+                    pendingAutoMicChatId == chatId &&
+                    viewModel.autoMode.startsMicAfterReading
+                ) {
+                    pendingAutoMicChatId = null
+                    startMicRef.value?.invoke(chatId)
+                }
+            }, AUTO_MIC_START_DELAY_MS)
+        }
+    }
     DisposableEffect(geminiTts) {
         onDispose { geminiTts.close() }
     }
@@ -215,15 +235,8 @@ private fun BYOKeySpeakApp() {
                             ?.removePrefix("msg_")
                             ?.takeIf { it != utteranceId }
                             ?.toLongOrNull()
-                        // 読み上げ&マイクオート: 返信の再生が完了した時だけ英語マイクを起動する。
-                        if (chatId != null && pendingAutoMicChatId == chatId) {
-                            mainHandler.post {
-                                if (viewModel.autoMode.startsMicAfterReading) {
-                                    pendingAutoMicChatId = null
-                                    startMicRef.value?.invoke(chatId)
-                                }
-                            }
-                        }
+                        // 読み上げ&マイクオート: Android TTSの完了通知後に少しだけ待ってから起動する。
+                        mainHandler.post { scheduleEnglishMicAfterReading(chatId) }
                     }
 
                     override fun onStop(utteranceId: String?, interrupted: Boolean) {
@@ -259,13 +272,6 @@ private fun BYOKeySpeakApp() {
         }
     }
 
-    fun startEnglishMicAfterReading(chatId: Long?) {
-        if (chatId != null && pendingAutoMicChatId == chatId && viewModel.autoMode.startsMicAfterReading) {
-            pendingAutoMicChatId = null
-            startMicRef.value?.invoke(chatId)
-        }
-    }
-
     val speak: (Long?, String) -> Unit = { messageId, text ->
         if (viewModel.settings.speechOutputProvider == SpeechOutputProvider.Gemini) {
             geminiTts.play(
@@ -279,7 +285,7 @@ private fun BYOKeySpeakApp() {
 
                     override fun onComplete() {
                         speakingMessageId = null
-                        startEnglishMicAfterReading(messageId)
+                        scheduleEnglishMicAfterReading(messageId)
                     }
 
                     override fun onError(message: String) {
@@ -303,6 +309,7 @@ private fun BYOKeySpeakApp() {
     val pauseSpeaking: () -> Unit = {
         ttsRef.value?.stop()
         geminiTts.stop()
+        autoMicLaunchGeneration += 1
         pendingAutoMicChatId = null
         speakingMessageId = null
     }
@@ -310,6 +317,7 @@ private fun BYOKeySpeakApp() {
     // コーチ返信到着時の自動読み上げ(読み上げ完了でマイク起動につながる)
     androidx.compose.runtime.SideEffect {
         viewModel.coachReplyHook = { chatId, naturalReply ->
+            autoMicLaunchGeneration += 1
             pendingAutoMicChatId = if (viewModel.autoMode.startsMicAfterReading) chatId else null
             speak(chatId, naturalReply)
         }

@@ -6,6 +6,7 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Base64
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -133,6 +134,7 @@ class GeminiTtsPlayer(context: Context) {
             val temp = File(cache.parentFile, "${cache.name}.tmp")
             var started = false
             var received = false
+            var writtenFrames = 0
             FileOutputStream(temp).use { output ->
                 while (!source.exhausted()) {
                     ensureActive(playbackId)
@@ -149,7 +151,8 @@ class GeminiTtsPlayer(context: Context) {
                     }
                     received = true
                     output.write(chunk)
-                    activeTrack?.write(chunk, 0, chunk.size, AudioTrack.WRITE_BLOCKING)
+                    val track = activeTrack ?: throw IOException("音声を再生できませんでした。")
+                    writtenFrames += writePcmFully(track, chunk, playbackId) / BYTES_PER_FRAME
                 }
             }
             if (!received) {
@@ -161,6 +164,7 @@ class GeminiTtsPlayer(context: Context) {
                 temp.delete()
             }
             trimCache()
+            awaitPlaybackFinished(activeTrack, writtenFrames, playbackId)
             mainHandler.post { if (isCurrent(playbackId)) callback.onComplete() }
         }
     }
@@ -168,16 +172,44 @@ class GeminiTtsPlayer(context: Context) {
     private fun playPcm(bytes: ByteArray, playbackId: Long, callback: Callback) {
         ensureActive(playbackId)
         mainHandler.post { if (isCurrent(playbackId)) callback.onStart() }
-        activeTrack = createTrack().also { it.play() }
+        val track = createTrack().also {
+            activeTrack = it
+            it.play()
+        }
+        val writtenFrames = writePcmFully(track, bytes, playbackId) / BYTES_PER_FRAME
+        awaitPlaybackFinished(track, writtenFrames, playbackId)
+        mainHandler.post { if (isCurrent(playbackId)) callback.onComplete() }
+    }
+
+    /**
+     * AudioTrack.write() returns when PCM is queued, not when speakers have played it.
+     * The automatic microphone must wait for the playback head, otherwise it can interrupt
+     * the tail of a coach reply.
+     */
+    private fun awaitPlaybackFinished(track: AudioTrack?, writtenFrames: Int, playbackId: Long) {
+        val playbackTrack = track ?: throw IOException("音声を再生できませんでした。")
+        if (writtenFrames <= 0) return
+        val expectedDurationMs = writtenFrames * 1_000L / SAMPLE_RATE_HZ
+        val deadline = SystemClock.elapsedRealtime() + expectedDurationMs + PLAYBACK_DRAIN_GRACE_MS
+        while (playbackTrack.playbackHeadPosition < writtenFrames) {
+            ensureActive(playbackId)
+            if (SystemClock.elapsedRealtime() > deadline) {
+                throw IOException("音声の再生完了を確認できませんでした。")
+            }
+            Thread.sleep(PLAYBACK_HEAD_POLL_MS)
+        }
+    }
+
+    private fun writePcmFully(track: AudioTrack, bytes: ByteArray, playbackId: Long): Int {
         var offset = 0
         while (offset < bytes.size) {
             ensureActive(playbackId)
             val size = minOf(8_192, bytes.size - offset)
-            val wrote = activeTrack?.write(bytes, offset, size, AudioTrack.WRITE_BLOCKING) ?: 0
+            val wrote = track.write(bytes, offset, size, AudioTrack.WRITE_BLOCKING)
             if (wrote <= 0) throw IOException("音声を再生できませんでした。")
             offset += wrote
         }
-        mainHandler.post { if (isCurrent(playbackId)) callback.onComplete() }
+        return offset
     }
 
     private fun extractAudioChunk(raw: String): ByteArray? {
@@ -256,6 +288,9 @@ class GeminiTtsPlayer(context: Context) {
         private const val ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
         private const val API_REVISION = "2026-05-20"
         private const val SAMPLE_RATE_HZ = 24_000
+        private const val BYTES_PER_FRAME = 2
+        private const val PLAYBACK_HEAD_POLL_MS = 20L
+        private const val PLAYBACK_DRAIN_GRACE_MS = 2_000L
         private const val MAX_CACHE_BYTES = 20L * 1024L * 1024L
         private val JSON = "application/json; charset=utf-8".toMediaType()
 

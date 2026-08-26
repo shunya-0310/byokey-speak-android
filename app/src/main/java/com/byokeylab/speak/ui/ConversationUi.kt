@@ -28,6 +28,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Headset
@@ -845,11 +846,27 @@ fun QuickAssistSheet(
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "✦ Quick Assist",
-                style = MaterialTheme.typography.titleMedium,
-                color = Grimoire.BurgundyDeep
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "✦ Quick Assist",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Grimoire.BurgundyDeep,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = { viewModel.startNewQuickAssist(chatId) },
+                    enabled = !state.loading
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "新しいQuick Assist相談",
+                        tint = Grimoire.Burgundy
+                    )
+                }
+            }
             Text(
                 text = "言いたいことが英語で出てこないときは、日本語のままでOK。自然な言い方を提案します。",
                 style = MaterialTheme.typography.bodySmall,
