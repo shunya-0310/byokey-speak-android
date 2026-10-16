@@ -7,7 +7,6 @@ import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Base64
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,8 +18,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSource
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -28,7 +25,7 @@ import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.TimeUnit
 
-/** Gemini 3.1 Flash TTS PreviewのPCMストリームを直接再生する。 */
+/** Gemini 3.8 Flash-Lite TTSのPCMストリームを直接再生する。 */
 class GeminiTtsPlayer(context: Context) {
     interface Callback {
         fun onStart()
@@ -60,9 +57,11 @@ class GeminiTtsPlayer(context: Context) {
         activeJob = scope.launch {
             val cache = cacheFile(text, voice)
             try {
-                if (cache.isFile && cache.length() > 0) {
-                    playPcm(cache.readBytes(), playbackId, callback)
+                val cachedBytes = cache.takeIf { it.isFile }?.readBytes()
+                if (cachedBytes != null && GeminiTtsProtocol.isPcm(cachedBytes)) {
+                    playPcm(cachedBytes, playbackId, callback)
                 } else {
+                    if (cachedBytes != null) cache.delete()
                     streamToCacheAndPlay(apiKey, text, voice, cache, playbackId, callback)
                 }
             } catch (error: TtsCancelledException) {
@@ -107,21 +106,13 @@ class GeminiTtsPlayer(context: Context) {
         playbackId: Long,
         callback: Callback
     ) {
-        val body = JSONObject()
-            .put("model", MODEL)
-            .put("input", text)
-            .put("response_format", JSONObject().put("type", "audio"))
-            .put("generation_config", JSONObject().put(
-                "speech_config", JSONArray().put(JSONObject().put("voice", voice.apiName))
-            ))
-            .put("stream", true)
+        val body = GeminiTtsProtocol.requestBody(text, voice.apiName)
             .toString()
             .toRequestBody(JSON)
         val request = Request.Builder()
             .url(ENDPOINT)
             .addHeader("x-goog-api-key", apiKey)
             .addHeader("Content-Type", "application/json")
-            .addHeader("Api-Revision", API_REVISION)
             .post(body)
             .build()
         val call = client.newCall(request)
@@ -134,38 +125,58 @@ class GeminiTtsPlayer(context: Context) {
             val temp = File(cache.parentFile, "${cache.name}.tmp")
             var started = false
             var received = false
+            var completed = false
+            var pendingByte: Byte? = null
+            var initialBytes = ByteArray(0)
             var writtenFrames = 0
-            FileOutputStream(temp).use { output ->
-                while (!source.exhausted()) {
-                    ensureActive(playbackId)
-                    val line = source.readUtf8LineStrictOrNull() ?: continue
-                    if (!line.startsWith("data:")) continue
-                    val event = line.removePrefix("data:").trim()
-                    if (event.isBlank() || event == "[DONE]") continue
-                    val chunk = extractAudioChunk(event) ?: continue
-                    if (chunk.isEmpty()) continue
-                    if (!started) {
-                        started = true
-                        mainHandler.post { if (isCurrent(playbackId)) callback.onStart() }
-                        activeTrack = createTrack().also { it.play() }
+            try {
+                FileOutputStream(temp).use { output ->
+                    while (!source.exhausted()) {
+                        ensureActive(playbackId)
+                        val line = source.readUtf8LineStrictOrNull() ?: continue
+                        if (!line.startsWith("data:")) continue
+                        val event = line.removePrefix("data:").trim()
+                        if (event.isBlank() || event == "[DONE]") continue
+                        when (val parsed = GeminiTtsProtocol.parseEvent(event)) {
+                            GeminiTtsProtocol.Event.Completed -> completed = true
+                            GeminiTtsProtocol.Event.Ignore -> Unit
+                            is GeminiTtsProtocol.Event.Audio -> {
+                                if (completed) throw IllegalStateException("Gemini音声の完了後にデータを受信しました。")
+                                val bytes = if (pendingByte == null) parsed.bytes else byteArrayOf(pendingByte!!) + parsed.bytes
+                                pendingByte = if (bytes.size % 2 == 1) bytes.last() else null
+                                var chunk = if (pendingByte == null) bytes else bytes.copyOf(bytes.size - 1)
+                                if (chunk.isEmpty()) continue
+                                if (!started) {
+                                    chunk = initialBytes + chunk
+                                    if (chunk.size < 4) {
+                                        initialBytes = chunk
+                                        continue
+                                    }
+                                    if (!GeminiTtsProtocol.isPcm(chunk)) throw IllegalStateException("Gemini音声の形式が想定と異なります。")
+                                    initialBytes = ByteArray(0)
+                                    started = true
+                                    mainHandler.post { if (isCurrent(playbackId)) callback.onStart() }
+                                    activeTrack = createTrack().also { it.play() }
+                                }
+                                received = true
+                                output.write(chunk)
+                                val track = activeTrack ?: throw IOException("音声を再生できませんでした。")
+                                writtenFrames += writePcmFully(track, chunk, playbackId) / BYTES_PER_FRAME
+                            }
+                        }
                     }
-                    received = true
-                    output.write(chunk)
-                    val track = activeTrack ?: throw IOException("音声を再生できませんでした。")
-                    writtenFrames += writePcmFully(track, chunk, playbackId) / BYTES_PER_FRAME
                 }
-            }
-            if (!received) {
+                ensureActive(playbackId)
+                if (!received || !completed || pendingByte != null) {
+                    throw IllegalStateException("Gemini音声のストリームが正常終了しませんでした。")
+                }
+                if (!temp.renameTo(cache)) temp.copyTo(cache, overwrite = true)
+                trimCache()
+                awaitPlaybackFinished(activeTrack, writtenFrames, playbackId)
+                mainHandler.post { if (isCurrent(playbackId)) callback.onComplete() }
+            } finally {
                 temp.delete()
-                throw IllegalStateException("Gemini音声データを取得できませんでした。")
             }
-            if (!temp.renameTo(cache)) {
-                temp.copyTo(cache, overwrite = true)
-                temp.delete()
-            }
-            trimCache()
-            awaitPlaybackFinished(activeTrack, writtenFrames, playbackId)
-            mainHandler.post { if (isCurrent(playbackId)) callback.onComplete() }
         }
     }
 
@@ -210,14 +221,6 @@ class GeminiTtsPlayer(context: Context) {
             offset += wrote
         }
         return offset
-    }
-
-    private fun extractAudioChunk(raw: String): ByteArray? {
-        val root = runCatching { JSONObject(raw) }.getOrNull() ?: return null
-        val delta = root.optJSONObject("delta") ?: return null
-        if (delta.optString("type") != "audio") return null
-        return delta.optString("data").takeIf { it.isNotBlank() }
-            ?.let { Base64.decode(it, Base64.DEFAULT) }
     }
 
     private fun createTrack(): AudioTrack {
@@ -284,9 +287,8 @@ class GeminiTtsPlayer(context: Context) {
         if (exhausted()) null else readUtf8Line()
 
     companion object {
-        const val MODEL = "gemini-3.1-flash-tts-preview"
+        const val MODEL = GeminiTtsProtocol.MODEL
         private const val ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions"
-        private const val API_REVISION = "2026-05-20"
         private const val SAMPLE_RATE_HZ = 24_000
         private const val BYTES_PER_FRAME = 2
         private const val PLAYBACK_HEAD_POLL_MS = 20L
