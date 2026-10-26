@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit
 /** Gemini 3.8 Flash-Lite TTSのPCMストリームを直接再生する。 */
 class GeminiTtsPlayer(context: Context) {
     interface Callback {
+        fun onGenerating()
         fun onStart()
         fun onComplete()
         fun onError(message: String)
@@ -106,6 +107,8 @@ class GeminiTtsPlayer(context: Context) {
         playbackId: Long,
         callback: Callback
     ) {
+        ensureActive(playbackId)
+        mainHandler.post { if (isCurrent(playbackId)) callback.onGenerating() }
         val body = GeminiTtsProtocol.requestBody(text, voice.apiName)
             .toString()
             .toRequestBody(JSON)

@@ -102,6 +102,7 @@ import com.byokeylab.speak.ui.ProgressScreen
 import com.byokeylab.speak.data.ChatMode
 import com.byokeylab.speak.ui.ReviewScreen
 import com.byokeylab.speak.ui.SettingsScreen
+import com.byokeylab.speak.ui.SpeechGenerationIndicator
 import com.byokeylab.speak.ui.SplashScreen
 import com.google.android.play.core.appupdate.AppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
@@ -265,6 +266,7 @@ private fun BYOKeySpeakApp(
     // TTS (端末音声またはGemini音声。読み上げ&マイクオート時は完了後に英語マイクを開く)
     val ttsRef = remember { mutableStateOf<TextToSpeech?>(null) }
     val geminiTts = remember(context) { GeminiTtsPlayer(context) }
+    var isGeneratingSpeech by remember { mutableStateOf(false) }
     var speakingMessageId by rememberSaveable { mutableStateOf<Long?>(null) }
     var pendingAutoMicChatId by rememberSaveable { mutableStateOf<Long?>(null) }
     var autoMicLaunchGeneration by remember { mutableLongStateOf(0L) }
@@ -350,22 +352,30 @@ private fun BYOKeySpeakApp(
     }
 
     val speak: (Long?, String) -> Unit = { messageId, text ->
+        isGeneratingSpeech = false
         if (viewModel.settings.speechOutputProvider == SpeechOutputProvider.Gemini) {
             geminiTts.play(
                 apiKey = viewModel.settings.apiKey,
                 text = text,
                 voice = viewModel.settings.geminiTtsVoice,
                 callback = object : GeminiTtsPlayer.Callback {
+                    override fun onGenerating() {
+                        isGeneratingSpeech = true
+                    }
+
                     override fun onStart() {
+                        isGeneratingSpeech = false
                         speakingMessageId = messageId
                     }
 
                     override fun onComplete() {
+                        isGeneratingSpeech = false
                         speakingMessageId = null
                         scheduleEnglishMicAfterReading(messageId)
                     }
 
                     override fun onError(message: String) {
+                        isGeneratingSpeech = false
                         speakingMessageId = null
                         pendingAutoMicChatId = null
                         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -388,6 +398,7 @@ private fun BYOKeySpeakApp(
         geminiTts.stop()
         autoMicLaunchGeneration += 1
         pendingAutoMicChatId = null
+        isGeneratingSpeech = false
         speakingMessageId = null
     }
 
@@ -478,6 +489,7 @@ private fun BYOKeySpeakApp(
                 onJapaneseMic = startJapaneseMic,
                 onAssistMic = startAssistMic,
                 onSpeak = speak,
+                isGeneratingSpeech = isGeneratingSpeech,
                 speakingMessageId = speakingMessageId,
                 onPauseSpeaking = pauseSpeaking,
                 onReplayOnboarding = {
@@ -960,6 +972,7 @@ private fun MainScaffold(
     onJapaneseMic: (Long) -> Unit,
     onAssistMic: () -> Unit,
     onSpeak: (Long?, String) -> Unit,
+    isGeneratingSpeech: Boolean,
     speakingMessageId: Long?,
     onPauseSpeaking: () -> Unit,
     onReplayOnboarding: () -> Unit,
@@ -1074,6 +1087,9 @@ private fun MainScaffold(
                             }
                         }
                     }
+                }
+                if (isGeneratingSpeech) {
+                    SpeechGenerationIndicator(onCancel = onPauseSpeaking)
                 }
                 when (viewModel.currentTab) {
                     MainTab.Chats -> ChatsScreen(

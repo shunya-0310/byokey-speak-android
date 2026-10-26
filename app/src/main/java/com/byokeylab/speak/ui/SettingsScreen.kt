@@ -69,6 +69,7 @@ import com.byokeylab.speak.AppStorage
 import com.byokeylab.speak.AppTheme
 import com.byokeylab.speak.AppTutorialKind
 import com.byokeylab.speak.AppViewModel
+import com.byokeylab.speak.BuildConfig
 import com.byokeylab.speak.EnglishLevel
 import com.byokeylab.speak.Grimoire
 import com.byokeylab.speak.GeminiTtsVoice
@@ -619,6 +620,13 @@ fun SettingsScreen(
                 }
 
                 SettingsSection.Help -> {
+                    SectionCard(title = "アプリ情報") {
+                        Text(
+                            text = "バージョン ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Grimoire.Ink
+                        )
+                    }
                     SectionCard(title = "チュートリアル") {
                         Text(
                             text = "初回案内と各画面の基本操作をもう一度確認できます。",
@@ -680,6 +688,11 @@ fun SettingsScreen(
 
                 SettingsSection.About -> {
                     SectionCard(title = "About") {
+                        Text(
+                            text = "バージョン ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Grimoire.Ink
+                        )
                         TextButton(onClick = { openUrl(context, AppLinks.GITHUB_SOURCE) }) {
                             Text("ソースコード（GitHub）", color = Grimoire.GoldDark)
                         }
