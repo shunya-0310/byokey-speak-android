@@ -622,7 +622,7 @@ fun SettingsScreen(
                 SettingsSection.Help -> {
                     SectionCard(title = "アプリ情報") {
                         Text(
-                            text = "バージョン ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                            text = "バージョン ${BuildConfig.VERSION_NAME}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Grimoire.Ink
                         )
@@ -689,7 +689,7 @@ fun SettingsScreen(
                 SettingsSection.About -> {
                     SectionCard(title = "About") {
                         Text(
-                            text = "バージョン ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                            text = "バージョン ${BuildConfig.VERSION_NAME}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Grimoire.Ink
                         )

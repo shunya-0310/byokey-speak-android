@@ -120,7 +120,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** コーチ返信到着時にMainActivityが読み上げ+マイク起動を行うためのフック */
-    var coachReplyHook: ((chatId: Long, naturalReply: String) -> Unit)? = null
+    var coachReplyHook: ((chatId: Long, messageId: Long, naturalReply: String) -> Unit)? = null
 
     /** 返信の保存完了時にアプリ全体で受信音を鳴らすためのフック */
     var messageReceivedHook: (() -> Unit)? = null
@@ -337,7 +337,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val extracted = VocabExtractor.extract(generated.text)
             val cleanText = extracted.cleanText.ifBlank { generated.text }
             val displayText = generated.copy(text = cleanText).textWithSources()
-            repository.appendMessage(chatId, MessageRole.Coach, displayText)
+            val replyMessageId = repository.appendMessage(chatId, MessageRole.Coach, displayText)
             messageReceivedHook?.invoke()
             val source = VocabSource.Chats
             extracted.vocab.forEach { draft ->
@@ -345,7 +345,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             sendingChatId = null
             if (autoMode.startsMicAfterReading) {
-                coachReplyHook?.invoke(chatId, StudyStats.naturalReplyOf(displayText))
+                coachReplyHook?.invoke(chatId, replyMessageId, StudyStats.naturalReplyOf(displayText))
             }
         }
     }

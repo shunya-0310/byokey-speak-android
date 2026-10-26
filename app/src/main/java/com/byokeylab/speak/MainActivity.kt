@@ -269,20 +269,24 @@ private fun BYOKeySpeakApp(
     var isGeneratingSpeech by remember { mutableStateOf(false) }
     var speakingMessageId by rememberSaveable { mutableStateOf<Long?>(null) }
     var pendingAutoMicChatId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pendingAutoMicMessageId by remember { mutableStateOf<Long?>(null) }
     var autoMicLaunchGeneration by remember { mutableLongStateOf(0L) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val startMicRef = remember { mutableStateOf<((Long) -> Unit)?>(null) }
-    val scheduleEnglishMicAfterReading: (Long?) -> Unit = { chatId ->
-        if (chatId != null && pendingAutoMicChatId == chatId && viewModel.autoMode.startsMicAfterReading) {
+    val scheduleEnglishMicAfterReading: (Long?) -> Unit = { messageId ->
+        val chatId = pendingAutoMicChatId
+        if (chatId != null && messageId != null && pendingAutoMicMessageId == messageId && viewModel.autoMode.startsMicAfterReading) {
             val generation = autoMicLaunchGeneration + 1
             autoMicLaunchGeneration = generation
             mainHandler.postDelayed({
                 if (
                     autoMicLaunchGeneration == generation &&
                     pendingAutoMicChatId == chatId &&
+                    pendingAutoMicMessageId == messageId &&
                     viewModel.autoMode.startsMicAfterReading
                 ) {
                     pendingAutoMicChatId = null
+                    pendingAutoMicMessageId = null
                     startMicRef.value?.invoke(chatId)
                 }
             }, AUTO_MIC_START_DELAY_MS)
@@ -310,12 +314,12 @@ private fun BYOKeySpeakApp(
                     }
                     override fun onDone(utteranceId: String?) {
                         mainHandler.post { speakingMessageId = null }
-                        val chatId = utteranceId
+                        val messageId = utteranceId
                             ?.removePrefix("msg_")
                             ?.takeIf { it != utteranceId }
                             ?.toLongOrNull()
                         // 読み上げ&マイクオート: Android TTSの完了通知後に少しだけ待ってから起動する。
-                        mainHandler.post { scheduleEnglishMicAfterReading(chatId) }
+                        mainHandler.post { scheduleEnglishMicAfterReading(messageId) }
                     }
 
                     override fun onStop(utteranceId: String?, interrupted: Boolean) {
@@ -378,6 +382,7 @@ private fun BYOKeySpeakApp(
                         isGeneratingSpeech = false
                         speakingMessageId = null
                         pendingAutoMicChatId = null
+                        pendingAutoMicMessageId = null
                         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -398,16 +403,18 @@ private fun BYOKeySpeakApp(
         geminiTts.stop()
         autoMicLaunchGeneration += 1
         pendingAutoMicChatId = null
+        pendingAutoMicMessageId = null
         isGeneratingSpeech = false
         speakingMessageId = null
     }
 
     // コーチ返信到着時の自動読み上げ(読み上げ完了でマイク起動につながる)
     androidx.compose.runtime.SideEffect {
-        viewModel.coachReplyHook = { chatId, naturalReply ->
+        viewModel.coachReplyHook = { chatId, messageId, naturalReply ->
             autoMicLaunchGeneration += 1
             pendingAutoMicChatId = if (viewModel.autoMode.startsMicAfterReading) chatId else null
-            speak(chatId, naturalReply)
+            pendingAutoMicMessageId = if (viewModel.autoMode.startsMicAfterReading) messageId else null
+            speak(messageId, naturalReply)
         }
     }
 

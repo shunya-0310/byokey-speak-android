@@ -209,6 +209,7 @@ fun ConversationPane(
                     messages.lastOrNull { it.role == MessageRole.Coach }?.let { last ->
                         viewModel.coachReplyHook?.invoke(
                             chatId,
+                            last.id,
                             StudyStats.naturalReplyOf(conversationDisplayText(last.text))
                         )
                     }
